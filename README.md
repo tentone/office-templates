@@ -1,66 +1,20 @@
-# office-templates
+# Office Templates
 
-Template-based docx and pptx report creation for both Node and the browser.
+ - Fork of the [docx-templates]() project.
+ - Template-based docx and pptx report creation for both Node and the browser.
+ - The documents are created using Word or Powerpoint, placeholders can be added directly in the file.
+ - Execute JavaScript snippets (`EXEC` command, or `!` for short)
+ - Embed images, hyperlinks and even HTML dynamically (`IMAGE`, `LINK`, `HTML`).
+  - Logic loops with `FOR`/`END-FOR` commands, with support for table rows, nested loops amnd conditionals using `IF`.
+ - Possible to isolate the javascript execution with your own sandbox through `runJs`.
+ - Include **literal XML** for custom attributes (e.g. color changes)
+ - Supports `.docx` and `.pptx`, as well as macro-enabled `.docm` and `.pptm` templates.
+ - Works in node.js and browser
 
-## Installation
+## Usage
 
-```
-$ npm install office-templates
-```
-
-## Why?
-
-* **Write documents and presentations naturally using Word or PowerPoint**, just adding some commands where needed for dynamic contents
-* **Execute JavaScript snippets** (`EXEC` command, or `!` for short)
-* **Insert the result of JavaScript snippets** in your document (`INS`, `=` or just *nothing*)
-* **Embed images, hyperlinks and even HTML dynamically** (`IMAGE`, `LINK`, `HTML`). Dynamic images can be great for on-the-fly QR codes, downloading photos straight to your reports, charts… even maps!
-* Add **loops** with `FOR`/`END-FOR` commands, with support for table rows, nested loops, and JavaScript processing of elements (filter, sort, etc)
-* Include contents **conditionally**, `IF` a certain JavaScript expression is truthy
-* Define custom **aliases** for some commands (`ALIAS`) — useful for writing table templates!
-* Execute JavaScript directly, or provide your own sandbox through `runJs`.
-* Include **literal XML**
-* Written in TypeScript, so ships with type definitions.
-* Plenty of **examples** in this repo (with Node, Webpack and Browserify)
-* Supports `.docx` and `.pptx`, as well as macro-enabled `.docm` and `.pptm` templates.
-
-Contributions are welcome!
-
-# Table of contents
-
-- [Installation](#installation)
-- [Node usage](#node-usage)
-- [Deno usage](#deno-usage)
-- [Browser usage](#browser-usage)
-  - [Polyfilled browser-ready bundle](#polyfilled-browser-ready-bundle)
-  - [Browser template compatibility caveat](#browser-template-compatibility-caveat)
-  - [Running within a Web Worker](#running-within-a-web-worker)
-- [Writing templates](#writing-templates)
-  - [PowerPoint templates](#powerpoint-templates)
-  - [Migration](#migration)
-  - [Custom command delimiters](#custom-command-delimiters)
-  - [Supported commands](#supported-commands)
-    - [`INS` (`=`, or nothing at all)](#ins--or-nothing-at-all)
-    - [`EXEC` (`!`)](#exec-)
-    - [`IMAGE`](#image)
-    - [`LINK`](#link)
-    - [`HTML`](#html)
-    - [`FOR` and `END-FOR`](#for-and-end-for)
-    - [`IF` and `END-IF`](#if-and-end-if)
-    - [`ALIAS` (and alias resolution with `*`)](#alias-and-alias-resolution-with-)
-  - [Inserting literal XML](#inserting-literal-xml)
-- [Error handling](#error-handling)
-  - [Error types](#error-types)
-  - [Custom error handler](#custom-error-handler)
-- [Inspecting templates](#inspecting-templates)
-- [JavaScript execution and custom sandboxes](#javascript-execution-and-custom-sandboxes)
-  - [Execution migration](#execution-migration)
-- [Similar projects](#similar-projects)
-- [License (MIT)](#license-mit)
-
-
-# Node usage
-
-Here is a simple example, with report data injected directly as an object:
+ - To install from npm run `npm install office-templates`
+ - Here is a simple example, with report data injected directly as an object:
 
 ```js
 import createReport from 'office-templates';
@@ -79,7 +33,7 @@ const buffer = await createReport({
 fs.writeFileSync('report.docx', buffer)
 ```
 
-You can also **provide a sync or Promise-returning data resolver function** instead of a `data` object:
+ - You can also **provide a sync or Promise-returning data resolver function** instead of a `data` object:
 
 ```js
 const report = await createReport({
@@ -88,15 +42,17 @@ const report = await createReport({
 });
 ```
 
-The resolver is called once without arguments; its resolved data is used throughout the template.
+## Options
 
-Other options (with defaults):
+ - The resolver is called once without arguments; its resolved data is used throughout the template.
+ - Other options (with defaults):
 
 ```js
 const report = await createReport({
-  // ...
+  // Additional data to be provided to the template.
+  // 
+  // All of these will be available to JS snippets in your template commands 
   additionalJsContext: {
-    // all of these will be available to JS snippets in your template commands (see below)
     foo: 'bar',
     qrCode: async url => {
       /* build QR and return image data */
@@ -106,15 +62,12 @@ const report = await createReport({
   literalXmlDelimiter: '||',
   processLineBreaks: true,
 
-  /**
-   * Whether to fail on the first error encountered in the template. Defaults to true. Can be used to collect all errors in a template (e.g. misspelled commands) before failing.
-   */
+  // Whether to fail on the first error encountered in the template.
+  // 
+  // Defaults to true. Can be used to collect all errors in a template (e.g. misspelled commands) before failing.
   failFast: true,
 
-  /**
-   * When set to `true`, this setting ensures createReport throws an error when the result of an INS, HTML, IMAGE, or LINK command turns out to be null or undefined,
-   * as this usually indicates a mistake in the template or the invoking code (defaults to `false`).
-   */
+  // When set to `true`, this setting ensures createReport throws an error when the result of an INS, HTML, IMAGE, or LINK command turns out to be null or undefined, as this usually indicates a mistake in the template or the invoking code (defaults to `false`).
   rejectNullish: false,
 
   /**
@@ -156,87 +109,12 @@ const report = await createReport({
 });
 ```
 
-Check out the [Node examples folder](examples/example-node).
+## Browser compatibility
+Note that the JavaScript code in your .docx or .pptx template will be run as-is by the browser.
+Transpilers  can't see this code, and won't be able to polyfill it.
 
-# Deno usage
-For Deno, follow the Browser guide and import a local copy of the polyfilled bundle:
-
-```ts
-// @deno-types="./lib/bundled.d.ts"
-import { createReport } from './lib/browser.js';
-```
-
-JavaScript executes directly by default. Use `runJs` if you want to supply a sandbox compatible with Deno.
-
-# Browser usage
-
-You can use office-templates in the browser (yay!). Just as when using office-templates in Node, you need to provide the template contents as a `Buffer`-like object.
-
-For example when the template is on your server you can get it with something like:
-
-```js
-const template = await fetch('./template.docx').then(res => res.arrayBuffer())
-```
-
-Or if the user provides the template you can get a `File` object with:
-
-```html
-<input type="file">
-```
-
-Then read this file in an ArrayBuffer, feed it to office-templates, and download the result:
-
-```js
-import createReport from 'office-templates';
-
-const onTemplateChosen = async () => {
-  const template = await readFileIntoArrayBuffer(myFile);
-  const report = await createReport({
-    template,
-    data: { name: 'John', surname: 'Appleseed' },
-  });
-  saveDataToFile(
-    report,
-    'report.docx',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  );
-};
-
-// Load the user-provided file into an ArrayBuffer
-const readFileIntoArrayBuffer = fd =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      resolve(reader.result);
-    };
-    reader.readAsArrayBuffer(fd);
-  });
-```
-
-You can find an example implementation of `saveDataToFile()` [in the Webpack example](examples/example-webpack/client/index.js).
-
-Check out the examples [using Webpack](examples/example-webpack) and [using Browserify](examples/example-browserify) or you can use the browserified bundle directly as discussed below.
-
-## Polyfilled browser-ready bundle
-The browser build includes the polyfills needed by the library, including `Buffer` and streams. There is no VM polyfill or built-in sandbox. If you bundle the library yourself, provide the polyfills required by its dependencies.
-
-Host the `lib/browser.js` bundle yourself and import it directly as a module:
-
-```ts
-import { createReport } from './lib/browser.js';
-```
-
-The browser bundle targets `es2017`. Compile it to your target if you need to support older browsers.
-
-## Browser template compatibility caveat
-Note that the JavaScript code in your .docx or .pptx template will be run as-is by the browser. Transpilers like Babel can't see this code, and won't be able to polyfill it. This means that the JS code in your template needs to be compatible with the browsers you are targeting. In other words: don't use fancy modern syntax and functions in your template if you want older browsers, like IE11, to be able to render it.
-
-## Running within a Web Worker
-You can run `createReport` in a Web Worker without any execution-mode options. If you provide `runJs`, its implementation must work in that worker environment.
 
 # Writing templates
-
 You can find several template examples in this repo:
 
 * [SWAPI](examples/example-node), a good example of what you can achieve loading GraphQL data in your application for a report, including a simple script for report generation. Uses the freak-ish online Star Wars GraphQL API.
@@ -259,11 +137,6 @@ Use a dedicated text shape for an `IMAGE` command: the shape is replaced by a pi
 
 For browser downloads, use the `.pptx` extension and `application/vnd.openxmlformats-officedocument.presentationml.presentation` MIME type.
 
-## Migration
-
-The default command wrappers are now `{{` and `}}`. Existing templates using `+++` remain usable by passing `cmdDelimiter: '+++'` to `createReport` or `listCommands`.
-
-The `QUERY` command, `queryVars` option, and `QueryResolver` type have been removed. Fetch data in your application, or supply a zero-argument `DataResolver` function. Remove query tags from existing templates before rendering them.
 
 ## Custom command delimiters
 The default wrappers are `{{` and `}}`. You can use different **left/right command delimiters** by passing an array to `cmdDelimiter`:
