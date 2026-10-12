@@ -2,7 +2,7 @@
 
 import path from 'path';
 import fs from 'fs';
-import { createReport } from '../index';
+import { createReport } from './legacyReport';
 import { Image, ImagePars } from '../types';
 import { setDebugLogSink } from '../debug';
 import JSZip from 'jszip';

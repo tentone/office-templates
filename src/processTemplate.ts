@@ -1,4 +1,5 @@
 import {
+  normalizeTag,
   cloneNodeWithoutChildren,
   getNextSibling,
   newNonTextNode,
@@ -38,7 +39,8 @@ import { logger } from './debug';
 
 export function newContext(
   options: CreateReportOptions,
-  imageAndShapeIdIncrement = 0
+  imageAndShapeIdIncrement = 0,
+  relationshipIds = new Set<string>()
 ): Context {
   return {
     gCntIf: 0,
@@ -46,7 +48,6 @@ export function newContext(
     level: 1,
     fCmd: false,
     cmd: '',
-    fSeekQuery: false,
     buffers: {
       'w:p': { text: '', cmds: '', fInsertedText: false },
       'w:tr': { text: '', cmds: '', fInsertedText: false },
@@ -54,6 +55,7 @@ export function newContext(
     },
     imageAndShapeIdIncrement,
     images: {},
+    relationshipIds,
     linkId: 0,
     links: {},
     htmlId: 0,
@@ -67,51 +69,6 @@ export function newContext(
     pIfCheckMap: new Map(),
     trIfCheckMap: new Map(),
   };
-}
-
-// Go through the document until the query string is found (normally at the beginning)
-export async function extractQuery(
-  template: Node,
-  options: CreateReportOptions
-): Promise<string | undefined> {
-  const ctx: Context = newContext(options);
-
-  // ensure no command will be processed, except QUERY
-  ctx.fSeekQuery = true;
-
-  let nodeIn = template;
-  while (true) {
-    // Move down
-    if (nodeIn._children.length) nodeIn = nodeIn._children[0];
-    else {
-      // Move sideways or up
-      let fFound = false;
-      while (nodeIn._parent != null) {
-        const parent = nodeIn._parent;
-        const nextSibling = getNextSibling(nodeIn);
-        if (nextSibling) {
-          nodeIn = nextSibling;
-          fFound = true;
-          break;
-        }
-        nodeIn = parent;
-      }
-      if (!fFound) break;
-    }
-
-    if (!nodeIn) break;
-    const parent = nodeIn._parent;
-    if (
-      nodeIn._fTextNode &&
-      parent &&
-      !parent._fTextNode &&
-      parent._tag === 'w:t'
-    ) {
-      await processText(null, nodeIn, ctx, processCmd);
-    }
-    if (ctx.query != null) break;
-  }
-  return ctx.query;
 }
 
 type ReportOutput =
@@ -141,7 +98,7 @@ export function findHighestImgId(mainDoc: Node): number {
     for (const c of n._children) {
       const tag = c._fTextNode ? null : c._tag;
       if (tag == null) continue;
-      if (tag === 'wp:docPr') {
+      if (tag === 'wp:docPr' || tag === 'p:cNvPr') {
         if (c._fTextNode) continue;
         const raw = c._attrs.id;
         if (typeof raw !== 'string') continue;
@@ -176,15 +133,27 @@ const findParentPorTrNode = (node: Node) => {
   let parentNode = node._parent;
   let resultNode = null;
   while (parentNode != null && resultNode == null) {
-    const parentNodeTag = parentNode._fTextNode ? null : parentNode._tag;
+    const parentNodeTag = parentNode._fTextNode
+      ? null
+      : normalizeTag(parentNode._tag);
     if (parentNodeTag === 'w:p') {
       // check also for w:tr tag
-      const grandParentNode =
+      let grandParentNode =
         parentNode._parent != null ? parentNode._parent._parent : null;
+      // DrawingML has an extra txBody between the paragraph and table cell.
+      if (
+        !parentNode._fTextNode &&
+        parentNode._tag === 'a:p' &&
+        grandParentNode &&
+        !grandParentNode._fTextNode &&
+        grandParentNode._tag === 'a:tc'
+      ) {
+        grandParentNode = grandParentNode._parent ?? null;
+      }
       if (
         grandParentNode != null &&
         !grandParentNode._fTextNode &&
-        grandParentNode._tag === 'w:tr'
+        normalizeTag(grandParentNode._tag) === 'w:tr'
       ) {
         resultNode = grandParentNode;
       } else {
@@ -276,7 +245,7 @@ export async function walkTemplate(
     // Delete the last generated output node in several special cases
     // --------------------------------------------------------------
     if (move !== 'DOWN') {
-      const tag = nodeOut._fTextNode ? null : nodeOut._tag;
+      const tag = nodeOut._fTextNode ? null : normalizeTag(nodeOut._tag);
       let fRemoveNode = false;
       // Delete last generated output node if we're skipping nodes due to an empty FOR loop
       if (
@@ -302,7 +271,7 @@ export async function walkTemplate(
             if (
               node._tag === 'wp:anchor' ||
               node._tag === 'wp:inline' ||
-              node._tag === 'w:drawing'
+              normalizeTag(node._tag) === 'w:drawing'
             ) {
               return true;
             }
@@ -316,7 +285,7 @@ export async function walkTemplate(
         if (tag === 'w:tr' && fRemoveNode) {
           fRemoveNode =
             nodeIn._children.filter(
-              child => !child._fTextNode && child._tag === 'w:tr'
+              child => !child._fTextNode && normalizeTag(child._tag) === 'w:tr'
             ).length !== 1;
         }
 
@@ -325,7 +294,7 @@ export async function walkTemplate(
         if (tag === 'w:tc' && fRemoveNode) {
           fRemoveNode = !(
             nodeOut._children.filter(
-              child => !child._fTextNode && child._tag === 'w:tbl'
+              child => !child._fTextNode && normalizeTag(child._tag) === 'w:tbl'
             ).length > 0
           );
         }
@@ -364,7 +333,9 @@ export async function walkTemplate(
       if (
         ctx.pendingImageNode &&
         !nodeOut._fTextNode &&
-        nodeOut._tag === 'w:t'
+        (ctx.options.documentType === 'pptx'
+          ? nodeOut._tag === 'p:sp'
+          : nodeOut._tag === 'w:t')
       ) {
         const imgNode = ctx.pendingImageNode.image;
         const captionNodes = ctx.pendingImageNode.caption;
@@ -390,7 +361,7 @@ export async function walkTemplate(
       if (
         ctx.pendingLinkNode &&
         !nodeOut._fTextNode &&
-        nodeOut._tag === 'w:r'
+        normalizeTag(nodeOut._tag) === 'w:r'
       ) {
         const linkNode = ctx.pendingLinkNode;
         const parent = nodeOut._parent;
@@ -412,7 +383,7 @@ export async function walkTemplate(
       if (
         ctx.pendingHtmlNode &&
         !nodeOut._fTextNode &&
-        nodeOut._tag === 'w:p'
+        normalizeTag(nodeOut._tag) === 'w:p'
       ) {
         const htmlNode = ctx.pendingHtmlNode;
         const parent = nodeOut._parent;
@@ -433,25 +404,59 @@ export async function walkTemplate(
       // case, add an empty `w:p` inside
       if (
         !nodeOut._fTextNode &&
-        nodeOut._tag === 'w:tc' &&
+        normalizeTag(nodeOut._tag) === 'w:tc' &&
         !nodeOut._children.filter(
-          o => !o._fTextNode && (o._tag === 'w:p' || o._tag === 'w:altChunk')
+          o =>
+            !o._fTextNode &&
+            (normalizeTag(o._tag) === 'w:p' ||
+              normalizeTag(o._tag) === 'w:altChunk')
         ).length
       ) {
         nodeOut._children.push({
           _parent: nodeOut,
           _children: [],
           _fTextNode: false,
-          _tag: 'w:p',
+          _tag: nodeOut._tag === 'a:tc' ? 'a:p' : 'w:p',
           _attrs: {},
         });
       }
 
+      if (
+        !nodeOut._fTextNode &&
+        (nodeOut._tag === 'p:txBody' || nodeOut._tag === 'a:txBody') &&
+        !nodeOut._children.some(n => !n._fTextNode && n._tag === 'a:p')
+      ) {
+        const paragraph = newNonTextNode('a:p');
+        paragraph._parent = nodeOut;
+        nodeOut._children.push(paragraph);
+      }
+
       // Save latest `w:rPr` node that was visited (for LINK properties)
-      if (!nodeOut._fTextNode && nodeOut._tag === 'w:rPr') {
+      if (!nodeOut._fTextNode && nodeOut._tag === 'a:r') {
+        // DrawingML permits one text element per run. Preprocessing may split
+        // it into several siblings to isolate commands, so join them again.
+        const texts = nodeOut._children.filter(
+          (child): child is NonTextNode =>
+            !child._fTextNode && child._tag === 'a:t'
+        );
+        if (texts.length > 1) {
+          const first = texts[0];
+          first._children = texts.reduce<Node[]>(
+            (children, text) => children.concat(text._children),
+            []
+          );
+          first._children.forEach(child => {
+            child._parent = first;
+          });
+          nodeOut._children = nodeOut._children.filter(
+            child => child === first || !texts.includes(child as NonTextNode)
+          );
+        }
+      }
+      if (!nodeOut._fTextNode && normalizeTag(nodeOut._tag) === 'w:rPr') {
         ctx.textRunPropsNode = nodeOut;
       }
-      if (!nodeIn._fTextNode && nodeIn._tag === 'w:r') {
+      if (!nodeIn._fTextNode && normalizeTag(nodeIn._tag) === 'w:r') {
         delete ctx.textRunPropsNode;
       }
     }
@@ -470,7 +475,7 @@ export async function walkTemplate(
       }
 
       // Reset node buffers as needed if a `w:p` or `w:tr` is encountered
-      const tag = nodeIn._fTextNode ? null : nodeIn._tag;
+      const tag = nodeIn._fTextNode ? null : normalizeTag(nodeIn._tag);
       if (tag === 'w:p' || tag === 'w:tr' || tag === 'w:tc') {
         ctx.buffers[tag] = { text: '', cmds: '', fInsertedText: false };
       }
@@ -485,7 +490,9 @@ export async function walkTemplate(
       const newNodeTag = (newNode as NonTextNode)._tag;
       if (
         !isLoopExploring(ctx) &&
-        (newNodeTag === 'wp:docPr' || newNodeTag === 'v:shape')
+        (newNodeTag === 'wp:docPr' ||
+          newNodeTag === 'v:shape' ||
+          (newNodeTag === 'p:cNvPr' && ctx.loops.some(loop => loop.idx > 0)))
       ) {
         logger.debug('detected a - ', debugPrintNode(newNode));
         updateID(newNode as NonTextNode, ctx);
@@ -498,7 +505,7 @@ export async function walkTemplate(
         nodeIn._fTextNode &&
         parent &&
         !parent._fTextNode &&
-        parent._tag === 'w:t'
+        normalizeTag(parent._tag) === 'w:t'
       ) {
         const result = await processText(data, nodeIn, ctx, processor);
         if (typeof result === 'string') {
@@ -636,14 +643,8 @@ const processCmd: CommandProcessor = async (
   const { cmdName, cmdRest } = splitCommand(cmd);
   try {
     if (cmdName !== 'CMD_NODE') logger.debug(`Processing cmd: ${cmd}`);
-    // Seeking query?
-    if (ctx.fSeekQuery) {
-      if (cmdName === 'QUERY') ctx.query = cmdRest;
-      return;
-    }
-
     // Process command
-    if (cmdName === 'QUERY' || cmdName === 'CMD_NODE') {
+    if (cmdName === 'CMD_NODE') {
       // logger.debug(`Ignoring ${cmdName} command`);
       // ...
       // ALIAS name ANYTHING ELSE THAT MIGHT BE PART OF THE COMMAND...
@@ -688,7 +689,13 @@ const processCmd: CommandProcessor = async (
         let str = String(result);
         if (ctx.options.processLineBreaks) {
           const { literalXmlDelimiter } = ctx.options;
-          if (ctx.options.processLineBreaksAsNewText) {
+          if (ctx.options.documentType === 'pptx') {
+            // DrawingML breaks are siblings of runs, not children of a:t.
+            str = str.replace(
+              /\n/g,
+              `${literalXmlDelimiter}</a:t></a:r><a:br/><a:r><a:t xml:space="preserve">${literalXmlDelimiter}`
+            );
+          } else if (ctx.options.processLineBreaksAsNewText) {
             const splitByLineBreak = str.split('\n');
             const LINE_BREAK = `${literalXmlDelimiter}<w:br/>${literalXmlDelimiter}`;
             const END_OF_TEXT = `${literalXmlDelimiter}</w:t>${literalXmlDelimiter}`;
@@ -720,7 +727,7 @@ const processCmd: CommandProcessor = async (
         );
         if (img != null) {
           try {
-            processImage(ctx, img);
+            processImage(ctx, img, node);
           } catch (e) {
             if (!isError(e)) throw e;
             throw new ImageError(e, cmd);
@@ -736,11 +743,17 @@ const processCmd: CommandProcessor = async (
           cmdRest,
           ctx
         );
-        if (pars != null) await processLink(ctx, pars);
+        if (pars != null) await processLink(ctx, pars, node);
       }
 
       // HTML <code>
     } else if (cmdName === 'HTML') {
+      if (ctx.options.documentType === 'pptx') {
+        throw new InvalidCommandError(
+          'HTML is only supported in Word templates',
+          cmd
+        );
+      }
       if (!isLoopExploring(ctx)) {
         const html: string | undefined = await runUserJsAndGetRaw(
           data,
@@ -850,7 +863,7 @@ const processForIf = async (
         parentPorTrNode != null
           ? parentPorTrNode._fTextNode
             ? null
-            : parentPorTrNode._tag
+            : normalizeTag(parentPorTrNode._tag)
           : null;
       if (parentPorTrNode != null) {
         if (parentPorTrNodeTag === 'w:p') {
@@ -932,7 +945,7 @@ const processEndForIf = (
     parentPorTrNode != null
       ? parentPorTrNode._fTextNode
         ? null
-        : parentPorTrNode._tag
+        : normalizeTag(parentPorTrNode._tag)
       : null;
   if (parentPorTrNodeTag === 'w:p') {
     ctx.pIfCheckMap.delete(<Node>parentPorTrNode);
@@ -980,9 +993,12 @@ const processEndForIf = (
 
 const imageToContext = (ctx: Context, img: Image) => {
   validateImage(img);
-  ctx.imageAndShapeIdIncrement += 1;
-  const id = String(ctx.imageAndShapeIdIncrement);
-  const relId = `img${id}`;
+  let relId: string;
+  do {
+    ctx.imageAndShapeIdIncrement += 1;
+    relId = `img${ctx.imageAndShapeIdIncrement}`;
+  } while (ctx.relationshipIds.has(relId));
+  ctx.relationshipIds.add(relId);
   ctx.images[relId] = img;
   return relId;
 };
@@ -1015,7 +1031,11 @@ function validateImagePars(pars: ImagePars) {
   if (pars.thumbnail) validateImage(pars.thumbnail);
 }
 
-const processImage = (ctx: Context, imagePars: ImagePars) => {
+const processImage = (
+  ctx: Context,
+  imagePars: ImagePars,
+  commandNode: Node
+) => {
   validateImagePars(imagePars);
   const cx = (imagePars.width * 360e3).toFixed(0);
   const cy = (imagePars.height * 360e3).toFixed(0);
@@ -1092,6 +1112,45 @@ const processImage = (ctx: Context, imagePars: ImagePars) => {
       ]),
     ]
   );
+  if (ctx.options.documentType === 'pptx') {
+    let shape: Node | undefined = commandNode;
+    while (shape && (shape._fTextNode || shape._tag !== 'p:sp'))
+      shape = shape._parent;
+    if (!shape)
+      throw new Error(
+        'PowerPoint IMAGE commands must be in a dedicated text shape'
+      );
+    const convertPicture = (n: Node) => {
+      if (!n._fTextNode && n._tag.startsWith('pic:'))
+        n._tag = n._tag.replace('pic:', 'p:');
+      n._children.forEach(convertPicture);
+    };
+    convertPicture(pic);
+    pic._attrs = {};
+    const nv = pic._children[0] as NonTextNode;
+    (nv._children[0] as NonTextNode)._attrs.id = id;
+    nv._children.push(node('p:nvPr'));
+    const props = shape._children.find(
+      n => !n._fTextNode && n._tag === 'p:spPr'
+    );
+    const transform = props?._children.find(
+      n => !n._fTextNode && n._tag === 'a:xfrm'
+    );
+    const offset = transform?._children.find(
+      n => !n._fTextNode && n._tag === 'a:off'
+    );
+    if (offset && !offset._fTextNode) {
+      const pictureProps = pic._children[2];
+      (pictureProps._children[0]._children[0] as NonTextNode)._attrs = {
+        ...offset._attrs,
+      };
+    }
+    ctx.pendingImageNode = { image: pic };
+    BufferKeys.forEach(key => {
+      ctx.buffers[key].fInsertedText = true;
+    });
+    return;
+  }
   const drawing = node('w:drawing', {}, [
     node('wp:inline', { distT: '0', distB: '0', distL: '0', distR: '0' }, [
       node('wp:extent', { cx, cy }),
@@ -1134,14 +1193,53 @@ function getImageData(imagePars: ImagePars): Image {
   return { extension, data };
 }
 
-const processLink = async (ctx: Context, linkPars: LinkPars) => {
+const processLink = async (
+  ctx: Context,
+  linkPars: LinkPars,
+  commandNode: Node
+) => {
   const { url, label = url } = linkPars;
-  ctx.linkId += 1;
-  const id = String(ctx.linkId);
-  const relId = `link${id}`;
+  let relId: string;
+  do {
+    ctx.linkId += 1;
+    relId = `link${ctx.linkId}`;
+  } while (ctx.relationshipIds.has(relId));
+  ctx.relationshipIds.add(relId);
   ctx.links[relId] = { url };
   const node = newNonTextNode;
-  const { textRunPropsNode } = ctx;
+  let { textRunPropsNode } = ctx;
+  if (ctx.options.documentType === 'pptx') {
+    const run = commandNode._parent?._parent;
+    const properties = run?._children.find(
+      n => !n._fTextNode && n._tag === 'a:rPr'
+    );
+    if (properties && !properties._fTextNode) textRunPropsNode = properties;
+  }
+  if (ctx.options.documentType === 'pptx') {
+    const props = textRunPropsNode
+      ? (cloneNodeWithoutChildren(textRunPropsNode) as NonTextNode)
+      : node('a:rPr', { u: 'sng' });
+    // Keep character formatting, replacing any existing hyperlink.
+    const copy = (n: Node): Node =>
+      n._fTextNode
+        ? newTextNode(n._text)
+        : node(n._tag, { ...n._attrs }, n._children.map(copy));
+    textRunPropsNode?._children
+      .filter(n => n._fTextNode || n._tag !== 'a:hlinkClick')
+      .forEach(n => {
+        const child = copy(n);
+        child._parent = props;
+        props._children.push(child);
+      });
+    const hyperlink = node('a:hlinkClick', { 'r:id': relId });
+    hyperlink._parent = props;
+    props._children.push(hyperlink);
+    ctx.pendingLinkNode = node('a:r', {}, [
+      props,
+      node('a:t', {}, [newTextNode(label)]),
+    ]);
+    return;
+  }
   const link = node('w:hyperlink', { 'r:id': relId, 'w:history': '1' }, [
     node('w:r', {}, [
       textRunPropsNode ||
@@ -1153,9 +1251,12 @@ const processLink = async (ctx: Context, linkPars: LinkPars) => {
 };
 
 const processHtml = async (ctx: Context, data: string) => {
-  ctx.htmlId += 1;
-  const id = String(ctx.htmlId);
-  const relId = `html${id}`;
+  let relId: string;
+  do {
+    ctx.htmlId += 1;
+    relId = `html${ctx.htmlId}`;
+  } while (ctx.relationshipIds.has(relId));
+  ctx.relationshipIds.add(relId);
   ctx.htmls[relId] = data;
   const node = newNonTextNode;
   const html = node('w:altChunk', { 'r:id': relId });
@@ -1174,7 +1275,6 @@ const appendTextToTagBuffers = (
     fInsertedText?: boolean;
   }
 ) => {
-  if (ctx.fSeekQuery) return;
   const { fCmd, fInsertedText } = options;
   const type = fCmd ? 'cmds' : 'text';
   BufferKeys.forEach(key => {

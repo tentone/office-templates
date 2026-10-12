@@ -1,13 +1,15 @@
 {
   "name": "docx-templates",
   "version": "4.15.0",
-  "description": "Template-based docx report creation",
+  "description": "Template-based docx and pptx report creation",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "author": "Guillermo Grau Panea",
   "license": "MIT",
   "keywords": [
     "docx",
+    "pptx",
+    "powerpoint",
     "office",
     "word",
     "ms-word",

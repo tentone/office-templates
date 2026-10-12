@@ -1,4 +1,8 @@
-import { insertTextSiblingAfter, getNextSibling } from './reportUtils';
+import {
+  insertTextSiblingAfter,
+  getNextSibling,
+  normalizeTag,
+} from './reportUtils';
 import { Node } from './types';
 
 // In-place
@@ -17,12 +21,16 @@ const preprocessTemplate = (
 
   while (node != null) {
     // Add `xml:space` attr `preserve` to `w:t` tags
-    if (preserveSpace && !node._fTextNode && node._tag === 'w:t') {
+    if (
+      preserveSpace &&
+      !node._fTextNode &&
+      normalizeTag(node._tag) === 'w:t'
+    ) {
       node._attrs['xml:space'] = 'preserve';
     }
 
     // Add a space if we reach a new `w:p` tag and there's an open node (hence, in a command)
-    if (!node._fTextNode && node._tag === 'w:p' && openNode) {
+    if (!node._fTextNode && normalizeTag(node._tag) === 'w:p' && openNode) {
       openNode._text += ' ';
     }
 
@@ -31,7 +39,7 @@ const preprocessTemplate = (
       node._fTextNode &&
       node._parent &&
       !node._parent._fTextNode &&
-      node._parent._tag === 'w:t'
+      normalizeTag(node._parent._tag) === 'w:t'
     ) {
       if (openNode == null) openNode = node;
       const textIn = node._text;

@@ -32,7 +32,13 @@ const getNextSibling = (node: Node): Node | null => {
 
 const insertTextSiblingAfter = (textNode: TextNode): TextNode => {
   const tNode = textNode._parent;
-  if (!(tNode && !tNode._fTextNode && tNode._tag === 'w:t')) {
+  if (
+    !(
+      tNode &&
+      !tNode._fTextNode &&
+      (tNode._tag === 'w:t' || tNode._tag === 'a:t')
+    )
+  ) {
     throw new TemplateParseError(
       'Template syntax error: text node not within w:t'
     );
@@ -114,6 +120,7 @@ const logLoop = (loops: Array<LoopStatus>) => {
 // Public API
 // ==========================================
 export {
+  normalizeTag,
   cloneNodeWithoutChildren,
   getNextSibling,
   insertTextSiblingAfter,
@@ -124,3 +131,7 @@ export {
   isLoopExploring,
   logLoop,
 };
+
+// DrawingML uses the same text/paragraph/table concepts as WordprocessingML.
+const normalizeTag = (tag: string): string =>
+  /^a:(t|p|r|rPr|tbl|tr|tc)$/.test(tag) ? tag.replace(/^a:/, 'w:') : tag;

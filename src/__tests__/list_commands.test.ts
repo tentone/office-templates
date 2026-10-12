@@ -7,7 +7,7 @@ describe('listCommands', () => {
     const template = await fs.promises.readFile(
       path.join(__dirname, 'fixtures', 'noQuerySimpleInserts.docx')
     );
-    expect(await listCommands(template)).toEqual([
+    expect(await listCommands(template, '+++')).toEqual([
       { raw: 'INS a', code: 'a', type: 'INS' },
       { raw: 'ins b', code: 'b', type: 'INS' },
     ]);
@@ -17,7 +17,7 @@ describe('listCommands', () => {
     const template = await fs.promises.readFile(
       path.join(__dirname, 'fixtures', 'insertInHeaderAndFooter.docx')
     );
-    expect(await listCommands(template)).toMatchInlineSnapshot(`
+    expect(await listCommands(template, '+++')).toMatchInlineSnapshot(`
       [
         {
           "code": "body_command",
@@ -72,7 +72,7 @@ describe('listCommands', () => {
     const template = await fs.promises.readFile(
       path.join(__dirname, 'fixtures', 'for1inline.docx')
     );
-    expect(await listCommands(template)).toMatchInlineSnapshot(`
+    expect(await listCommands(template, '+++')).toMatchInlineSnapshot(`
       [
         {
           "code": "company IN companies",
@@ -97,7 +97,7 @@ describe('listCommands', () => {
     const template = await fs.promises.readFile(
       path.join(__dirname, 'fixtures', 'if2.docx')
     );
-    expect(await listCommands(template)).toMatchInlineSnapshot(`
+    expect(await listCommands(template, '+++')).toMatchInlineSnapshot(`
       [
         {
           "code": "4 > 3",

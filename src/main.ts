@@ -2,7 +2,6 @@ import { zipLoad, zipGetText, zipSetText, zipSave } from './zip';
 import { parseXml, buildXml } from './xml';
 import preprocessTemplate from './preprocessTemplate';
 import {
-  extractQuery,
   produceJsReport,
   walkTemplate,
   getCommand,
@@ -26,11 +25,9 @@ import JSZip from 'jszip';
 import { TemplateParseError } from './errors';
 import { logger } from './debug';
 
-const DEFAULT_CMD_DELIMITER = '+++' as const;
+const DEFAULT_CMD_DELIMITER: [string, string] = ['{{', '}}'];
 const DEFAULT_LITERAL_XML_DELIMITER = '||' as const;
 const CONTENT_TYPES_PATH = '[Content_Types].xml' as const;
-const TEMPLATE_PATH = 'word' as const;
-const XML_FILE_REGEX = new RegExp(`${TEMPLATE_PATH}\\/[^\\/]+\\.xml`);
 
 export async function parseTemplate(template: ArrayBuffer) {
   logger.debug('Unzipping...');
@@ -41,9 +38,12 @@ export async function parseTemplate(template: ArrayBuffer) {
   // See issue #131. Office365 files may name the main template file document2.xml or something else
   // So we'll have to parse the content-types 'manifest' file first and retrieve the template file's name first.
   const contentTypes = await readContentTypes(zip);
-  const mainDocument = getMainDoc(contentTypes);
+  const mainPart = getMainPart(contentTypes);
+  const templatePath = mainPart.split('/')[0];
+  const documentType = templatePath === 'ppt' ? 'pptx' : 'docx';
+  const mainDocument = mainPart.slice(templatePath.length + 1);
 
-  const main_template_path = `${TEMPLATE_PATH}/${mainDocument}`;
+  const main_template_path = `${templatePath}/${mainDocument}`;
   logger.debug(`Reading ${main_template_path}...`);
   const templateXml = await zipGetText(zip, main_template_path);
   if (templateXml == null)
@@ -57,28 +57,42 @@ export async function parseTemplate(template: ArrayBuffer) {
 
   logger.debug(`${main_template_path} parsed in ${tac - tic} ms`);
 
-  return { jsTemplate, mainDocument, zip, contentTypes };
+  return {
+    jsTemplate,
+    mainDocument,
+    zip,
+    contentTypes,
+    templatePath,
+    documentType,
+  } as const;
 }
 
 async function prepSecondaryXMLs(
   zip: JSZip,
   main_doc_path: string,
+  templatePath: string,
   options: CreateReportOptions
 ): Promise<[Node, string][]> {
   // Find all non-main XML files containing the headers, footers, etc.
   const secondary_xml_files: string[] = [];
-  zip.forEach(async filePath => {
+  const xmlFileRegex =
+    templatePath === 'ppt'
+      ? /^ppt\/(slides|notesSlides|slideLayouts|slideMasters|notesMasters)\/[^/]+\.xml$/
+      : /^word\/[^/]+\.xml$/;
+  zip.forEach(filePath => {
     if (
-      XML_FILE_REGEX.test(filePath) &&
-      filePath !== `${TEMPLATE_PATH}/${main_doc_path}` &&
-      filePath.indexOf(`${TEMPLATE_PATH}/template`) !== 0
+      xmlFileRegex.test(filePath) &&
+      filePath !== `${templatePath}/${main_doc_path}` &&
+      filePath.indexOf(`${templatePath}/template`) !== 0
     ) {
       secondary_xml_files.push(filePath);
     }
   });
 
   // Sort to ensure deterministic processing.
-  secondary_xml_files.sort();
+  secondary_xml_files.sort((a, b) =>
+    a.localeCompare(b, 'en', { numeric: true })
+  );
 
   const prepped_secondaries: [Node, string][] = [];
   for (const f of secondary_xml_files) {
@@ -99,13 +113,13 @@ async function prepSecondaryXMLs(
 }
 
 /**
- * Create Report from docx template
+ * Create a report from a docx or pptx template
  *
  * example:
  * ```js
  * const report = await createReport({
  *   template,
- *   data: query => graphqlServer.execute(query),
+ *   data: async () => fetchReportData(),
  *   additionalJsContext: {
  *     // all of these will be available to JS snippets in your template commands
  *     foo: 'bar',
@@ -113,7 +127,7 @@ async function prepSecondaryXMLs(
  *       // do stuff
  *     },
  *   },
- *   cmdDelimiter: '+++',
+ *   cmdDelimiter: ['{{', '}}'],
  *   literalXmlDelimiter: '||',
  *   processLineBreaks: true,
  *   noSandbox: false,
@@ -140,7 +154,7 @@ async function createReport(
   _probe?: 'JS' | 'XML'
 ): Promise<Node | string | Uint8Array> {
   logger.debug('Report options:', { attach: options });
-  const { template, data, queryVars } = options;
+  const { template, data } = options;
   const literalXmlDelimiter =
     options.literalXmlDelimiter || DEFAULT_LITERAL_XML_DELIMITER;
   const createOptions: CreateReportOptions = {
@@ -172,10 +186,16 @@ async function createReport(
     indentXml: createOptions.indentXml,
   };
 
-  const { jsTemplate, mainDocument, zip, contentTypes } = await parseTemplate(
-    template
-  );
+  const {
+    jsTemplate,
+    mainDocument,
+    zip,
+    contentTypes,
+    templatePath,
+    documentType,
+  } = await parseTemplate(template);
 
+  createOptions.documentType = documentType;
   logger.debug('Preprocessing template...');
   const prepped_template = preprocessTemplate(
     jsTemplate,
@@ -183,20 +203,12 @@ async function createReport(
     createOptions.preserveSpace
   );
 
-  // Fetch the data that will fill in the template
-  let queryResult = null;
-  if (typeof data === 'function') {
-    logger.debug('Looking for the query in the template...');
-    const query = await extractQuery(prepped_template, createOptions);
-    logger.debug(`Query: ${query || 'no query found'}`);
-    queryResult = await data(query, queryVars);
-  } else {
-    queryResult = data;
-  }
+  const reportData = typeof data === 'function' ? await data() : data;
 
   const prepped_secondaries = await prepSecondaryXMLs(
     zip,
     mainDocument,
+    templatePath,
     createOptions
   );
 
@@ -211,8 +223,20 @@ async function createReport(
   // - Build output XML and write it to disk
   // - Images
   logger.debug('Generating report...');
-  let ctx = newContext(createOptions, highest_img_id);
-  const result = await produceJsReport(queryResult, prepped_template, ctx);
+  let ctx = await contextForPart(
+    `${templatePath}/${mainDocument}`,
+    highest_img_id
+  );
+  async function contextForPart(part: string, highestId: number) {
+    const rels = await getRelsFromZip(zip, relationshipPath(part));
+    const ids = new Set<string>();
+    for (const child of rels._children) {
+      if (!child._fTextNode && typeof child._attrs.Id === 'string')
+        ids.add(child._attrs.Id);
+    }
+    return newContext(createOptions, highestId, ids);
+  }
+  const result = await produceJsReport(reportData, prepped_template, ctx);
   if (result.status === 'errors') {
     throw result.errors;
   }
@@ -228,19 +252,34 @@ async function createReport(
   const reportXml = buildXml(report1, xmlOptions);
   if (_probe === 'XML') return reportXml.toString('utf-8');
   logger.debug('Writing report...');
-  zipSetText(zip, `${TEMPLATE_PATH}/${mainDocument}`, reportXml);
+  zipSetText(zip, `${templatePath}/${mainDocument}`, reportXml);
 
   let numImages = Object.keys(images1).length;
   let numHtmls = Object.keys(htmls1).length;
-  await processImages(images1, mainDocument, zip, createOptions.indentXml);
-  await processLinks(links1, mainDocument, zip, createOptions.indentXml);
-  await processHtmls(htmls1, mainDocument, zip, createOptions.indentXml);
+  await processImages(
+    images1,
+    `${templatePath}/${mainDocument}`,
+    zip,
+    createOptions.indentXml
+  );
+  await processLinks(
+    links1,
+    `${templatePath}/${mainDocument}`,
+    zip,
+    createOptions.indentXml
+  );
+  await processHtmls(
+    htmls1,
+    `${templatePath}/${mainDocument}`,
+    zip,
+    createOptions.indentXml
+  );
 
   for (const [js, filePath] of prepped_secondaries) {
     // Grab the last used (highest) image id from the main document's context, but create
     // a fresh one for each secondary XML.
-    ctx = newContext(createOptions, ctx.imageAndShapeIdIncrement);
-    const result = await produceJsReport(queryResult, js, ctx);
+    ctx = await contextForPart(filePath, ctx.imageAndShapeIdIncrement);
+    const result = await produceJsReport(reportData, js, ctx);
     if (result.status === 'errors') {
       throw result.errors;
     }
@@ -256,16 +295,9 @@ async function createReport(
     numImages += Object.keys(images2).length;
     numHtmls += Object.keys(htmls2).length;
 
-    const segments = filePath.split('/');
-    const documentComponent = segments[segments.length - 1];
-    await processImages(
-      images2,
-      documentComponent,
-      zip,
-      createOptions.indentXml
-    );
-    await processLinks(links2, mainDocument, zip, createOptions.indentXml);
-    await processHtmls(htmls2, mainDocument, zip, createOptions.indentXml);
+    await processImages(images2, filePath, zip, createOptions.indentXml);
+    await processLinks(links2, filePath, zip, createOptions.indentXml);
+    await processHtmls(htmls2, filePath, zip, createOptions.indentXml);
   }
 
   // Process [Content_Types].xml
@@ -315,7 +347,7 @@ async function createReport(
 }
 
 /**
- * Lists all the commands in a docx template.
+ * Lists all the commands in a docx or pptx template.
  *
  * example:
  * ```js
@@ -328,8 +360,8 @@ async function createReport(
  * ]
  * ```
  *
- * @param template the docx template as a Buffer-like object
- * @param delimiter the command delimiter (defaults to ['+++', '+++'])
+ * @param template the docx or pptx template as a Buffer-like object
+ * @param delimiter the command delimiter (defaults to ['{{', '}}'])
  */
 export async function listCommands(
   template: ArrayBuffer,
@@ -353,8 +385,15 @@ export async function listCommands(
     compressionLevel: 1,
   };
 
-  const { jsTemplate, mainDocument, zip } = await parseTemplate(template);
-  const secondaries = await prepSecondaryXMLs(zip, mainDocument, opts);
+  const { jsTemplate, mainDocument, zip, templatePath } = await parseTemplate(
+    template
+  );
+  const secondaries = await prepSecondaryXMLs(
+    zip,
+    mainDocument,
+    templatePath,
+    opts
+  );
   const xmls = [jsTemplate, ...secondaries.map(([js, path]) => js)];
   const commands: CommandSummary[] = [];
   for (const js of xmls) {
@@ -389,7 +428,7 @@ export async function listCommands(
 
 /**
  * Extract metadata from a document, such as the number of pages or words.
- * @param template the docx template as a Buffer-like object
+ * @param template the docx or pptx template as a Buffer-like object
  */
 export async function getMetadata(template: ArrayBuffer) {
   const app_xml_path = `docProps/app.xml`;
@@ -458,9 +497,15 @@ export async function readContentTypes(zip: JSZip): Promise<NonTextNode> {
 }
 
 export function getMainDoc(contentTypes: NonTextNode): string {
+  return getMainPart(contentTypes).replace(/^(word|ppt)\//, '');
+}
+
+function getMainPart(contentTypes: NonTextNode): string {
   const MAIN_DOC_MIMES = [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml',
     'application/vnd.ms-word.document.macroEnabled.main+xml',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml',
+    'application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml',
   ];
   for (const t of contentTypes._children) {
     if (!t._fTextNode) {
@@ -470,7 +515,7 @@ export function getMainDoc(contentTypes: NonTextNode): string {
       ) {
         const path = t._attrs.PartName;
         if (path) {
-          return path.replace('/word/', '');
+          return path.replace(/^\//, '');
         }
       }
     }
@@ -490,13 +535,15 @@ const processImages = async (
   const imageIds = Object.keys(images);
   if (!imageIds.length) return;
   logger.debug('Completing document.xml.rels...');
-  const relsPath = `${TEMPLATE_PATH}/_rels/${documentComponent}.rels`;
+  const relsPath = relationshipPath(documentComponent);
   const rels = await getRelsFromZip(zip, relsPath);
   for (const imageId of imageIds) {
     const { extension, data: imgData } = images[imageId];
-    const imgName = `template_${documentComponent}_${imageId}${extension}`;
+    const imgName = `template_${documentComponent
+      .replace(/^[^/]+\//, '')
+      .replace(/[/]/g, '_')}_${imageId}${extension}`;
     logger.debug(`Writing image ${imageId} (${imgName})...`);
-    const imgPath = `${TEMPLATE_PATH}/media/${imgName}`;
+    const imgPath = `${documentComponent.split('/')[0]}/media/${imgName}`;
     if (typeof imgData === 'string') {
       zip.file(imgPath, imgData, { base64: true });
     } else {
@@ -507,7 +554,9 @@ const processImages = async (
       newNonTextNode('Relationship', {
         Id: imageId,
         Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
-        Target: `media/${imgName}`,
+        Target: `${
+          documentComponent.split('/').length > 2 ? '../' : ''
+        }media/${imgName}`,
       })
     );
   }
@@ -528,7 +577,7 @@ const processLinks = async (
   const linkIds = Object.keys(links);
   if (linkIds.length) {
     logger.debug('Completing document.xml.rels...');
-    const relsPath = `${TEMPLATE_PATH}/_rels/${documentComponent}.rels`;
+    const relsPath = relationshipPath(documentComponent);
     const rels = await getRelsFromZip(zip, relsPath);
     for (const linkId of linkIds) {
       const { url } = links[linkId];
@@ -562,17 +611,19 @@ const processHtmls = async (
     // Process rels
     logger.debug(`Completing document.xml.rels...`);
     const htmlFiles = [];
-    const relsPath = `${TEMPLATE_PATH}/_rels/${documentComponent}.rels`;
+    const relsPath = relationshipPath(documentComponent);
     const rels = await getRelsFromZip(zip, relsPath);
     for (const htmlId of htmlIds) {
       const htmlData = htmls[htmlId];
       // Replace all period characters in the filename to play nice with more picky parsers (like Docx4j)
-      const htmlName = `template_${documentComponent.replace(
-        /\./g,
-        '_'
-      )}_${htmlId}.html`;
+      const htmlName = `template_${documentComponent
+        .replace(/^[^/]+\//, '')
+        .replace(/[/.]/g, '_')}_${htmlId}.html`;
       logger.debug(`Writing html ${htmlId} (${htmlName})...`);
-      const htmlPath = `${TEMPLATE_PATH}/${htmlName}`;
+      const htmlPath = `${documentComponent.slice(
+        0,
+        documentComponent.lastIndexOf('/')
+      )}/${htmlName}`;
       htmlFiles.push(`/${htmlPath}`);
       zipSetText(zip, htmlPath, Buffer.from(htmlData));
       addChild(
@@ -592,6 +643,11 @@ const processHtmls = async (
   }
 };
 
+const relationshipPath = (part: string) => {
+  const slash = part.lastIndexOf('/');
+  return `${part.slice(0, slash)}/_rels/${part.slice(slash + 1)}.rels`;
+};
+
 const getRelsFromZip = async (zip: JSZip, relsPath: string) => {
   let relsXml = await zipGetText(zip, relsPath);
   if (!relsXml) {
@@ -605,7 +661,7 @@ const getRelsFromZip = async (zip: JSZip, relsPath: string) => {
 const getCmdDelimiter = (
   delimiter?: string | [string, string]
 ): [string, string] => {
-  if (!delimiter) return [DEFAULT_CMD_DELIMITER, DEFAULT_CMD_DELIMITER];
+  if (!delimiter) return [...DEFAULT_CMD_DELIMITER];
   if (typeof delimiter === 'string') return [delimiter, delimiter];
   return delimiter;
 };

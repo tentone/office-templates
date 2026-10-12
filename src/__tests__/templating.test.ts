@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import MockDate from 'mockdate';
 import QR from 'qrcode';
-import { createReport } from '../index';
+import { createReport } from './legacyReport';
 import { UserOptions } from '../types';
 import { setDebugLogSink } from '../debug';
 import JSZip from 'jszip';
@@ -43,24 +43,14 @@ Morbi dignissim consequat ex, non finibus est faucibus sodales. Integer sed just
         expect(result._children.length).toBeTruthy();
       });
 
-      it('02 Extracts a query and calls the resolver', async () => {
+      it('02 Calls the data resolver once without arguments', async () => {
         const template = await fs.promises.readFile(
-          path.join(__dirname, 'fixtures', 'simpleQuery.docx')
+          path.join(__dirname, 'fixtures', 'noQuery.docx')
         );
-        const queryResolver = jest.fn();
-        const queryVars = { a: 'importantContext' };
-        await createReport(
-          {
-            noSandbox,
-            template,
-            data: queryResolver,
-            queryVars,
-          },
-          'JS'
-        );
-        expect(queryResolver.mock.calls.length).toEqual(1);
-        expect(queryResolver.mock.calls[0][0]).toEqual('exampleQuery');
-        expect(queryResolver.mock.calls[0][1]).toEqual(queryVars);
+        const resolver = jest.fn(async () => ({}));
+        await createReport({ template, data: resolver, noSandbox }, 'JS');
+        expect(resolver).toHaveBeenCalledTimes(1);
+        expect(resolver).toHaveBeenCalledWith();
       });
 
       it("03 Uses the resolver's response to produce the report", async () => {

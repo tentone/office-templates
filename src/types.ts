@@ -1,5 +1,5 @@
 // ==========================================
-// Docx nodes
+// Office XML nodes
 
 import { QualifiedAttribute } from 'sax';
 
@@ -30,10 +30,7 @@ export type NonTextNode = BaseNode & {
 // Report creator
 // ==========================================
 export type ReportData = any;
-export type QueryResolver = (
-  query: string | undefined,
-  queryVars: any
-) => ReportData | Promise<ReportData>;
+export type DataResolver = () => ReportData | Promise<ReportData>;
 
 type ErrorHandler = (e: Error, raw_code?: string) => any;
 
@@ -44,23 +41,19 @@ type RunJSFunc = (o: { sandbox: SandBox; ctx: Context }) => {
 
 export type UserOptions = {
   /**
-   * Docx file template as a Uint8Array (or e.g. ArrayBuffer or NodeJS Buffer).
+   * Docx or pptx file template as a Uint8Array (or e.g. ArrayBuffer or NodeJS Buffer).
    */
   template: Uint8Array;
   /**
-   * Object of data to be injected or a (async) function that resolves to the data. The function gets as an argument the contents of the QUERY command as a string.
+   * Object of data to be injected or a (async) function that resolves to the data. The function is called once without arguments.
    */
-  data?: ReportData | QueryResolver;
+  data?: ReportData | DataResolver;
   /**
-   * Gets injected into data function as second argument.
-   */
-  queryVars?: any;
-  /**
-   * Defines a custom command delimiter. This can be a String e.g. '+++' or an Array of Strings with length 2: ['{', '}'] in which the first element serves as the start delimiter and the second as the end delimiter.
+   * Defines a custom command delimiter. Defaults to ['{{', '}}']. This can be a String e.g. '+++' or an Array of Strings with length 2: ['{', '}'] in which the first element serves as the start delimiter and the second as the end delimiter.
    */
   cmdDelimiter?: string | [string, string];
   /**
-   * The delimiter that's used to indicate literal XML that should be inserted into the docx XML tree as-is. Defaults to `||`.
+   * The delimiter that's used to indicate literal XML that should be inserted into the document XML tree as-is. Defaults to `||`.
    */
   literalXmlDelimiter?: string;
   /**
@@ -129,18 +122,18 @@ export type UserOptions = {
   maximumWalkingDepth?: number;
   /**
    * Whether to indent the generated XML to make it more human-readable.
-   * Tip: Set this to false if you want to minimize the size of the generated docx file.
+   * Tip: Set this to false if you want to minimize the size of the generated Office file.
    * (Default: true)
    */
   indentXml?: boolean;
   /**
    * Whether to preserve whitespace in the generated XML.*
-   * Tip: Set this to false if you want to minimize the size of the generated docx file.
+   * Tip: Set this to false if you want to minimize the size of the generated Office file.
    * (Default: true)
    */
   preserveSpace?: boolean;
   /**
-   * Compression level for the generated docx file.
+   * Compression level for the generated Office file.
    * Integer between 0 (no compression, fastest) and 9 (maximum compression, slowest).
    * (Default: 1)
    */
@@ -148,6 +141,7 @@ export type UserOptions = {
 };
 
 export type CreateReportOptions = {
+  documentType?: 'docx' | 'pptx';
   cmdDelimiter: [string, string];
   literalXmlDelimiter: string;
   processLineBreaks: boolean;
@@ -177,8 +171,6 @@ export type Context = {
   level: number;
   fCmd: boolean;
   cmd: string;
-  fSeekQuery: boolean;
-  query?: string;
   buffers: {
     'w:p': BufferStatus;
     'w:tr': BufferStatus;
@@ -187,6 +179,7 @@ export type Context = {
   pendingImageNode?: { image: NonTextNode; caption?: NonTextNode[] };
   imageAndShapeIdIncrement: number;
   images: Images;
+  relationshipIds: Set<string>;
   pendingLinkNode?: NonTextNode;
   linkId: number;
   links: Links;
@@ -295,7 +288,6 @@ export type CommandSummary = {
 export type BuiltInCommand = (typeof BUILT_IN_COMMANDS)[number];
 
 export const BUILT_IN_COMMANDS = [
-  'QUERY',
   'CMD_NODE',
   'ALIAS',
   'FOR',
