@@ -1,6 +1,8 @@
 # office-templates
 
- - Template-based docx and pptx report creation for both Node and the browser. ([See the blog post](http://guigrpa.github.io/2017/01/01/word-docs-the-relay-way/)).
+Template-based docx and pptx report creation for both Node and the browser.
+
+## Installation
 
 ```
 $ npm install office-templates
@@ -55,13 +57,12 @@ Contributions are welcome!
 - [License (MIT)](#license-mit)
 
 
-
 # Node usage
 
 Here is a simple example, with report data injected directly as an object:
 
 ```js
-import createReport from 'docx-templates';
+import createReport from 'office-templates';
 import fs from 'fs';
 
 const template = fs.readFileSync('myTemplate.docx');
@@ -155,21 +156,21 @@ const report = await createReport({
 });
 ```
 
-Check out the [Node examples folder](https://github.com/guigrpa/docx-templates/tree/master/examples/example-node).
+Check out the [Node examples folder](examples/example-node).
 
 # Deno usage
-You can use docx-templates in Deno! Just follow the Browser guide and import the polyfilled docx-templates bundle, for example from unpkg:
+For Deno, follow the Browser guide and import a local copy of the polyfilled bundle:
 
 ```ts
-// @deno-types="https://unpkg.com/docx-templates/lib/bundled.d.ts"
-import { createReport } from 'https://unpkg.com/docx-templates/lib/browser.js';
+// @deno-types="./lib/bundled.d.ts"
+import { createReport } from './lib/browser.js';
 ```
 
 > Note that you have to set `noSandbox: true` or bring your own sandbox with the `runJs` option.
 
 # Browser usage
 
-You can use docx-templates in the browser (yay!). Just as when using docx-templates in Node, you need to provide the template contents as a `Buffer`-like object. 
+You can use office-templates in the browser (yay!). Just as when using office-templates in Node, you need to provide the template contents as a `Buffer`-like object.
 
 For example when the template is on your server you can get it with something like:
 
@@ -183,10 +184,10 @@ Or if the user provides the template you can get a `File` object with:
 <input type="file">
 ```
 
-Then read this file in an ArrayBuffer, feed it to docx-templates, and download the result:
+Then read this file in an ArrayBuffer, feed it to office-templates, and download the result:
 
 ```js
-import createReport from 'docx-templates';
+import createReport from 'office-templates';
 
 const onTemplateChosen = async () => {
   const template = await readFileIntoArrayBuffer(myFile);
@@ -213,20 +214,20 @@ const readFileIntoArrayBuffer = fd =>
   });
 ```
 
-You can find an example implementation of `saveDataToFile()` [in the Webpack example](https://github.com/guigrpa/docx-templates/blob/79119723ff1c009b5bbdd28016558da9b405742f/examples/example-webpack/client/index.js#L82).
+You can find an example implementation of `saveDataToFile()` [in the Webpack example](examples/example-webpack/client/index.js).
 
-Check out the examples [using Webpack](https://github.com/guigrpa/docx-templates/tree/master/examples/example-webpack) and [using Browserify](https://github.com/guigrpa/docx-templates/tree/master/examples/example-browserify) or you can use the browserified bundle directly as discussed below.
+Check out the examples [using Webpack](examples/example-webpack) and [using Browserify](examples/example-browserify) or you can use the browserified bundle directly as discussed below.
 
 ## Polyfilled browser-ready bundle
 As this library depends on the internal NodeJS modules `vm`, `stream`, `util`, `events` and the `Buffer` global, your build tools have to polyfill these modules when using the library in the browser. We provide a browser build which includes the required polyfills. Its file size is about 300K uncompressed or 85K / 70K with gzip / brotli compression).
 
-You can import the library directly **as a module** using e.g. the unpkg.com CDN, like below, or you can host the `/lib/browser.js` bundle yourself.
+Host the `lib/browser.js` bundle yourself and import it directly as a module:
 
 ```ts
-import { createReport } from 'https://unpkg.com/docx-templates/lib/browser.js';
+import { createReport } from './lib/browser.js';
 ```
 
-this is good for testing or prototyping but you should keep in mind that the `browser.js` is `es2017` code which is supported by only 95% of users. If you have to support IE or old browser versions, you are better off compiling it to your target. Also see the support table for `es2017` [here](https://caniuse.com/sr_es8).
+The browser bundle targets `es2017`. Compile it to your target if you need to support older browsers.
 
 ## Browser template compatibility caveat
 Note that the JavaScript code in your .docx or .pptx template will be run as-is by the browser. Transpilers like Babel can't see this code, and won't be able to polyfill it. This means that the JS code in your template needs to be compatible with the browsers you are targeting. In other words: don't use fancy modern syntax and functions in your template if you want older browsers, like IE11, to be able to render it.
@@ -238,9 +239,9 @@ Note that you need to disable the sandbox mode using the `noSandbox: true` optio
 
 You can find several template examples in this repo:
 
-* [SWAPI](https://github.com/guigrpa/docx-templates/tree/master/examples/example-node), a good example of what you can achieve loading GraphQL data in your application for a report, including a simple script for report generation. Uses the freak-ish online [Star Wars GraphQL API](https://github.com/graphql/swapi-graphql).
-* [Dynamic images](https://github.com/guigrpa/docx-templates/tree/master/examples/example-node): with examples of images that are dynamically downloaded or created. Check out the _images-many-tiles_ example for a taste of this powerful feature.
-* Browser-based examples [using Webpack](https://github.com/guigrpa/docx-templates/tree/master/examples/example-webpack) and [using Browserify](https://github.com/guigrpa/docx-templates/tree/master/examples/example-browserify).
+* [SWAPI](examples/example-node), a good example of what you can achieve loading GraphQL data in your application for a report, including a simple script for report generation. Uses the freak-ish online Star Wars GraphQL API.
+* [Dynamic images](examples/example-node): with examples of images that are dynamically downloaded or created. Check out the _images-many-tiles_ example for a taste of this powerful feature.
+* Browser-based examples [using Webpack](examples/example-webpack) and [using Browserify](examples/example-browserify).
 
 ## PowerPoint templates
 
@@ -278,7 +279,7 @@ This allows much cleaner-looking templates!
 
 Then you can add commands and JS snippets in your template like this: `{foo}`, `{project.name}`, `{FOR ...}`.
 
-When choosing a delimiter, take care not to introduce conflicts with JS syntax, especially if you are planning to use larger JS code snippets in your templates. For example, with `['{', '}']` you may run into conflicts as the brackets in your JS code may be mistaken for command delimiters. As an alternative, consider using multi-character delimiters, like `{#` and `#}` (see issue [#102](https://github.com/guigrpa/docx-templates/issues/102)).
+When choosing a delimiter, take care not to introduce conflicts with JS syntax, especially if you are planning to use larger JS code snippets in your templates. For example, with `['{', '}']` you may run into conflicts as the brackets in your JS code may be mistaken for command delimiters. As an alternative, consider using multi-character delimiters, like `{#` and `#}`.
 
 
 ## Supported commands
@@ -429,7 +430,7 @@ additionalJsContext: {
         data: fs.readFileSync('sample.png'),
         extension: '.png',
       };
-      return { width: 6, height: 6, data: svg_data, extension: '.svg', thumbnail };                    
+      return { width: 6, height: 6, data: svg_data, extension: '.svg', thumbnail };
     }
   }
 ```
@@ -448,7 +449,7 @@ If the `label` is not specified, the URL is used as a label.
 
 Takes the HTML resulting from evaluating a JavaScript snippet and converts it to Word contents.
 
-**Important:** This uses [altchunk](https://blogs.msdn.microsoft.com/ericwhite/2008/10/26/how-to-use-altchunk-for-document-assembly/), which is only supported in Microsoft Word, and not in e.g. LibreOffice or Google Docs.
+**Important:** This uses altchunk, which is only supported in Microsoft Word, and not in e.g. LibreOffice or Google Docs.
 
 ```
 {{HTML `
@@ -589,7 +590,6 @@ await createReport({
 }
 ```
 
-See http://officeopenxml.com/anatomyofOOXML.php for a good reference of the internal XML structure of a docx file.
 
 # Error handling
 
@@ -653,7 +653,7 @@ Using a custom `errorHandler` in combination with `rejectNullish = true` allows 
 The `listCommands` function lets you list all the commands in a docx or pptx template using the same parser as `createReport`.
 
 ```typescript
-import { listCommands } from 'docx-templates';
+import { listCommands } from 'office-templates';
 const template_buffer = fs.readFileSync('template.docx');
 const commands = await listCommands(template_buffer);
 
@@ -665,11 +665,11 @@ const commands = await listCommands(template_buffer);
 ```
 
 The `getMetadata` function lets you extract the metadata fields from a document, such as the number of pages or words. Note that this feature has a few limitations:
-- Not all fields may be available, depending on the document. 
-- These metadata fields, including the number of pages, are only updated by MS Word (or LibreOffice) when saving the document. Docx-templates does not alter these metadata fields, so the number of pages may not reflect the actual size of your rendered document (see issue [#240](https://github.com/guigrpa/docx-templates/issues/240)). Docx-templates can not reliably determine the number of pages in a document, as this requires a full-fledged docx renderer (e.g. MS Word).
+- Not all fields may be available, depending on the document.
+- These metadata fields, including the number of pages, are only updated by MS Word (or LibreOffice) when saving the document. Office-templates does not alter these metadata fields, so the number of pages may not reflect the actual size of your rendered document. Office-templates can not reliably determine the number of pages in a document, as this requires a full-fledged docx renderer (e.g. MS Word).
 
 ```typescript
-    import { getMetadata } from 'docx-templates';
+    import { getMetadata } from 'office-templates';
     const template = fs.readFileSync('template.docx');
     await getMetadata(template)
     // result:
@@ -698,19 +698,19 @@ The `getMetadata` function lets you extract the metadata fields from a document,
 
 **Templates can contain arbitrary javascript code. Beware of code injection risks!**
 
-Obviously, this is less of an issue when running docx-templates in a browser environment.
+Obviously, this is less of an issue when running office-templates in a browser environment.
 
 Regardless of whether you are using sandboxing or not (`noSandbox: true`), be aware that allowing users to upload arbitrary templates to be executed on your server poses a significant security threat. Use at your own risk.
 
-The library uses `require('vm')` as its default sandboxing environment. Note that this sandbox is explicitly [_not_ meant to be used as a security mechanism](https://nodejs.org/api/vm.html#vm_vm_executing_javascript). You can provide your own sandboxing environment if you want, as shown in [this example project](https://github.com/guigrpa/docx-templates/tree/master/examples/example-vm2).
+The library uses `require('vm')` as its default sandboxing environment. Note that this sandbox is explicitly _not_ meant to be used as a security mechanism. You can provide your own sandboxing environment if you want, as shown in [this example project](examples/example-vm2).
 
 Note that turning off the sandbox (`noSandbox: true`) is known to give significant performance improvements when working with large templates or datasets. However, before you do this, make sure you are aware of the security implications.
 
 # Similar projects
 
-* [docxtemplater](https://github.com/open-xml-templating/docxtemplater) (believe it or not, I just discovered this very similarly-named project after brushing up my old CS code for `docx-templates` and publishing it for the first time!). It provides lots of goodies, but doesn't allow (AFAIK) embedding JS snippets.
+* docxtemplater supports template-based document generation.
 
-* [docx](https://github.com/dolanmiu/docx) and similar ones - generate docx files from scratch, programmatically. Drawbacks of this approach: they typically do not support all Word features, and producing a complex document can be challenging.
+* docx and similar ones - generate docx files from scratch, programmatically. Drawbacks of this approach: they typically do not support all Word features, and producing a complex document can be challenging.
 
 
 # License (MIT)
