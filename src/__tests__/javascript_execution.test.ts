@@ -1,8 +1,8 @@
-import { runUserJsAndGetRaw } from '../jsSandbox';
-import { newContext } from '../processTemplate';
+import { runUserJsAndGetRaw } from '../sandbox';
+import { newContext } from '../process-template';
 import { CreateReportOptions } from '../types';
 import { CommandExecutionError, NullishCommandResultError } from '../errors';
-import { newTextNode } from '../reportUtils';
+import { newTextNode } from '../report-utils';
 import { customRunJs } from './customRunJs';
 
 function context(overrides: Partial<CreateReportOptions> = {}) {

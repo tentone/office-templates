@@ -1,6 +1,6 @@
 import { zipLoad, zipGetText, zipSetText, zipSave } from './zip';
 import { parseXml, buildXml } from './xml';
-import preprocessTemplate from './preprocessTemplate';
+import preprocessTemplate from './preprocess-template';
 import {
   produceJsReport,
   walkTemplate,
@@ -8,7 +8,7 @@ import {
   splitCommand,
   newContext,
   findHighestImgId,
-} from './processTemplate';
+} from './process-template';
 import {
   UserOptions,
   Htmls,
@@ -20,7 +20,7 @@ import {
   CommandSummary,
   BuiltInCommand,
 } from './types';
-import { addChild, newNonTextNode } from './reportUtils';
+import { addChild, newNonTextNode } from './report-utils';
 import JSZip from 'jszip';
 import { TemplateParseError } from './errors';
 import { logger } from './debug';

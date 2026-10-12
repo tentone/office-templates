@@ -7,8 +7,8 @@ import {
   getCurLoop,
   isLoopExploring,
   logLoop,
-} from './reportUtils';
-import { runUserJsAndGetRaw } from './jsSandbox';
+} from './report-utils';
+import { runUserJsAndGetRaw } from './sandbox';
 import {
   Node,
   TextNode,

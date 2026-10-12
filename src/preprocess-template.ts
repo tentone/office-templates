@@ -2,7 +2,7 @@ import {
   insertTextSiblingAfter,
   getNextSibling,
   normalizeTag,
-} from './reportUtils';
+} from './report-utils';
 import { Node } from './types';
 
 // In-place

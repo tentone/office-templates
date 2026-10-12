@@ -8,7 +8,7 @@ import {
 } from '../main';
 import fs from 'fs';
 import { setDebugLogSink } from '../debug';
-import { findHighestImgId } from '../processTemplate';
+import { findHighestImgId } from '../process-template';
 
 if (process.env.DEBUG) setDebugLogSink(console.log);
 
