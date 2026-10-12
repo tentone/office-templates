@@ -1,4 +1,3 @@
-import { getCurLoop } from './report-utils';
 import { ReportData, Context, SandBox } from './types';
 import {
   isError,
@@ -25,10 +24,14 @@ export async function runUserJsAndGetRaw(
     ...ctx.options.additionalJsContext,
   };
 
-  // Add currently defined vars, including loop vars and the index
-  // of the innermost loop
-  const curLoop = getCurLoop(ctx);
-  if (curLoop) sandbox.$idx = curLoop.idx;
+  // IF blocks share the loop stack but must not shadow a FOR's index.
+  for (let i = ctx.loops.length - 1; i >= 0; i--) {
+    const loop = ctx.loops[i];
+    if (!loop.isIf) {
+      sandbox.$idx = loop.idx;
+      break;
+    }
+  }
   Object.keys(ctx.vars).forEach(varName => {
     sandbox[`$${varName}`] = ctx.vars[varName];
   });

@@ -25,7 +25,8 @@ export default defineConfig([{
         'process.env.READABLE_STREAM': 'false',
         'process.browser': 'true',
         'process.env.NODE_ENV': '"production"',
-        'process': 'undefined'
+        // Replace the guard without rewriting module names such as process-template.
+        'typeof process': '"undefined"'
       }
     }),
     esbuild({

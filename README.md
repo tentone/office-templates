@@ -517,7 +517,7 @@ Loop over a group of elements (resulting from the evaluation of a JavaScript exp
 
 Note that inside the loop, the variable relative to the current element being processed must be prefixed with `$`.
 
-It is possible to get the current element index of the inner-most loop with the variable `$idx`, starting from `0`. For example:
+The `$idx` variable is the zero-based index of the innermost active `FOR` loop. It remains available in `IF` conditions and inside their contents; `IF` blocks do not replace or reset it. When a nested `FOR` finishes, `$idx` refers to the enclosing `FOR` again. For example:
 ```
 {{FOR company IN companies}}
 Company ({{$idx}}): {{INS $company.name}}
@@ -527,6 +527,14 @@ Executives:
 {{END-FOR executive}}
 {{END-FOR company}}
 ```
+
+Use `$idx` in a condition to select specific iterations:
+
+```text
+{{ FOR person IN people }}{{ IF $idx === 1 }}{{ $person.name }} (index {{ $idx }}){{ END-IF }}{{ END-FOR person }}
+```
+
+This inserts only the second person's name. If the condition is inside multiple nested `FOR` loops, it uses the index of the innermost `FOR`, even when additional `IF` blocks are nested around it. This works in DOCX and PPTX, including with a custom `runJs` executor.
 
 Since JavaScript expressions are supported, you can for example filter the loop domain:
 

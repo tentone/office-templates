@@ -124,6 +124,33 @@ describe.each(['docx', 'pptx'])('%s inline nesting', format => {
       ).toBe('before[A!][C]after');
     });
 
+    it('uses the FOR index in IF conditions and content inside the IF', async () => {
+      expect(
+        await render(
+          '{{ FOR item IN items }}{{ IF $idx === 1 }}{{ $item }}:{{ $idx }}{{ END-IF }}{{ END-FOR item }}',
+          { items: ['first', 'second', 'third'] }
+        )
+      ).toBe('second:1');
+    });
+
+    it('preserves the FOR index through multiple nested conditions', async () => {
+      expect(
+        await render(
+          '{{ FOR item IN items }}{{ IF true }}{{ IF $idx === 2 }}{{ IF $idx > 0 }}{{ $item }}:{{ $idx }}{{ END-IF }}{{ END-IF }}{{ END-IF }}{{ END-FOR item }}',
+          { items: ['first', 'second', 'third'] }
+        )
+      ).toBe('third:2');
+    });
+
+    it('uses the innermost FOR index inside IF and restores the outer index afterward', async () => {
+      expect(
+        await render(
+          '{{ FOR group IN groups }}G{{ $idx }}[{{ IF true }}{{ FOR item IN $group.items }}{{ IF true }}{{ IF $idx === 1 }}{{ $item }}:{{ $idx }}{{ END-IF }}{{ END-IF }}{{ END-FOR item }}{{ END-IF }}]{{ $idx }};{{ END-FOR group }}',
+          { groups: [{ items: ['A0', 'A1', 'A2'] }, { items: ['B0', 'B1'] }] }
+        )
+      ).toBe('G0[A1:1]0;G1[B1:1]1;');
+    });
+
     it('handles nested loops with an empty inner collection', async () => {
       const text =
         'before{{ FOR group IN groups }}[{{ $group.name }}:{{ FOR value IN $group.values }}{{ $value }}{{ END-FOR value }}]{{ END-FOR group }}after';
