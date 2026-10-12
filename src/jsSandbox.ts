@@ -40,12 +40,15 @@ export async function runUserJsAndGetRaw(
     if (ctx.options.runJs) {
       const temp = await ctx.options.runJs({ sandbox, ctx });
       context = temp.modifiedSandbox;
-      result = await temp.result;
+      result = temp.result;
     } else {
       context = sandbox;
       const wrapper = new Function('with(this) { return eval(__code__); }');
-      result = await wrapper.call(context);
+      result = wrapper.call(context);
     }
+    // Resolve promise-valued commands before validation, string conversion,
+    // or image insertion, regardless of the JavaScript executor used.
+    result = await result;
   } catch (err) {
     const e = isError(err) ? err : new Error(`${err}`);
     if (ctx.options.errorHandler != null) {

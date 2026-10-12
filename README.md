@@ -336,7 +336,26 @@ Even shorter (and with custom `cmdDelimiter: ['{', '}']`):
 {name} {surname}
 ```
 
-You can also access functions in the `additionalJsContext` parameter to `createReport()`, which may even return a Promise. The resolved value of the Promise will be inserted in the document.
+`INS` automatically waits when its expression returns a promise, then inserts the resolved value. This also applies to `=` and omitted-command shorthand, promise-valued data fields, and async functions from `additionalJsContext`. You do not need to write `await` in the template.
+
+For example, place these commands in your template:
+
+```text
+{{ INS customerName }}
+{{ INS loadSummary() }}
+```
+
+```js
+const report = await createReport({
+  template,
+  data: { customerName: Promise.resolve('John') },
+  additionalJsContext: {
+    loadSummary: async () => 'Quarterly summary',
+  },
+});
+```
+
+This behavior works in DOCX and PPTX with the default executor or a custom `runJs`. Rejected promises follow the usual command error handling. Validation such as `rejectNullish` applies to the resolved value.
 
 Use JavaScript's ternary operator to implement an _if-else_ structure:
 
@@ -399,7 +418,29 @@ In this case, we use a function from `additionalJsContext` object passed to `cre
   }
 ```
 
-The JS snippet must return an _image object_ or a Promise of an _image object_, containing:
+`IMAGE` also automatically waits for a promise and inserts the resolved image object. This works with promise-valued data fields and functions returning promises, without `await` in the template:
+
+```text
+{{ IMAGE loadImage() }}
+```
+
+```js
+const report = await createReport({
+  template,
+  additionalJsContext: {
+    loadImage: async () => ({
+      data: await fs.promises.readFile('photo.png'),
+      extension: '.png',
+      width: 6,
+      height: 4,
+    }),
+  },
+});
+```
+
+The resolved image object is validated before insertion. Rejected promises follow the usual command error handling, and `rejectNullish` applies after resolution. For PPTX, place the command in a dedicated text shape as described above.
+
+The JS snippet must return an _image object_ or a promise resolving to an _image object_, containing:
 
 * `width`: desired width of the image on the page _in cm_. Note that the aspect ratio should match that of the input image to avoid stretching.
 * `height` desired height of the image on the page _in cm_.
