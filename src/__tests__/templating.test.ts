@@ -1277,16 +1277,18 @@ Morbi dignissim consequat ex, non finibus est faucibus sodales. Integer sed just
           path.join(__dirname, 'fixtures', 'ifStatementsOnSameLine.docx')
         );
 
-        const result = createReport(
+        const result = await createReport(
           {
             runJs,
             template,
             data: { a: true, b: true, counts: ['a', 'b', 'c'] },
             cmdDelimiter: ['{{', '}}'],
           },
-          'JS'
+          'XML'
         );
-        return expect(result).rejects.toMatchSnapshot();
+        expect(result).not.toContain('{{');
+        expect(result).toContain('>xyz</w:t>');
+        expect(result).toContain('>Hello</w:t>');
       });
 
       it('Nested IF statements on same row1', async () => {
@@ -1294,16 +1296,17 @@ Morbi dignissim consequat ex, non finibus est faucibus sodales. Integer sed just
           path.join(__dirname, 'fixtures', 'ifStatementsOnSameRow1.docx')
         );
 
-        const result = createReport(
+        const result = await createReport(
           {
             runJs,
             template,
             data: { a: true, b: true, counts: ['a', 'b', 'c'] },
             cmdDelimiter: ['{{', '}}'],
           },
-          'JS'
+          'XML'
         );
-        return expect(result).rejects.toMatchSnapshot();
+        expect(result).not.toContain('{{');
+        expect(result).toContain('>Hello</w:t>');
       });
 
       it('Nested IF statements on same row2', async () => {
@@ -1311,16 +1314,16 @@ Morbi dignissim consequat ex, non finibus est faucibus sodales. Integer sed just
           path.join(__dirname, 'fixtures', 'ifStatementsOnSameRow2.docx')
         );
 
-        const result = createReport(
+        const result = await createReport(
           {
             runJs,
             template,
             data: { a: true, b: true, counts: ['a', 'b', 'c'] },
             cmdDelimiter: ['{{', '}}'],
           },
-          'JS'
+          'XML'
         );
-        return expect(result).rejects.toMatchSnapshot();
+        expect(result).not.toContain('{{');
       });
 
       it('Dynamic table columns', async () => {

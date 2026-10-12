@@ -591,6 +591,14 @@ Include contents conditionally (depending on the evaluation of a JavaScript expr
 {{END-IF}}
 ```
 
+You can nest `IF` and `FOR` commands within the same paragraph or table row, including on a single line. Close each block in reverse order of opening it:
+
+```text
+{{ IF visible }}{{ FOR item IN items }}{{ IF $item.enabled }}{{ $item.name }} {{ END-IF }}{{ END-FOR item }}{{ END-IF }}
+```
+
+This works in both DOCX and PPTX. When an outer condition is false or an outer loop is empty, expressions inside the skipped block are not evaluated.
+
 Similarly to the `FOR` command, it also works over table rows. You can also nest `IF` commands
 and mix & match `IF` and `FOR` commands. In fact, for the technically inclined: the `IF` command
 is implemented as a `FOR` command with 1 or 0 iterations, depending on the expression value.

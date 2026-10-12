@@ -65,9 +65,6 @@ export function newContext(
     fJump: false,
     shorthands: {},
     options,
-    // To verfiy we don't have a nested if within the same p or tr tag
-    pIfCheckMap: new Map(),
-    trIfCheckMap: new Map(),
   };
 }
 
@@ -113,6 +110,15 @@ export function findHighestImgId(mainDoc: Node): number {
   return 0;
 }
 
+// Ignore XML indentation and property nodes when checking rendered content.
+const hasTemplateText = (node: Node): boolean =>
+  node._fTextNode
+    ? !!node._parent &&
+      !node._parent._fTextNode &&
+      normalizeTag(node._parent._tag) === 'w:t' &&
+      node._text.length > 0
+    : node._children.some(hasTemplateText);
+
 const debugPrintNode = (node: Node) =>
   JSON.stringify(
     node._fTextNode
@@ -128,42 +134,6 @@ const debugPrintNode = (node: Node) =>
           _attrs: node?._attrs,
         }
   );
-
-const findParentPorTrNode = (node: Node) => {
-  let parentNode = node._parent;
-  let resultNode = null;
-  while (parentNode != null && resultNode == null) {
-    const parentNodeTag = parentNode._fTextNode
-      ? null
-      : normalizeTag(parentNode._tag);
-    if (parentNodeTag === 'w:p') {
-      // check also for w:tr tag
-      let grandParentNode =
-        parentNode._parent != null ? parentNode._parent._parent : null;
-      // DrawingML has an extra txBody between the paragraph and table cell.
-      if (
-        !parentNode._fTextNode &&
-        parentNode._tag === 'a:p' &&
-        grandParentNode &&
-        !grandParentNode._fTextNode &&
-        grandParentNode._tag === 'a:tc'
-      ) {
-        grandParentNode = grandParentNode._parent ?? null;
-      }
-      if (
-        grandParentNode != null &&
-        !grandParentNode._fTextNode &&
-        normalizeTag(grandParentNode._tag) === 'w:tr'
-      ) {
-        resultNode = grandParentNode;
-      } else {
-        resultNode = parentNode;
-      }
-    }
-    parentNode = parentNode._parent;
-  }
-  return resultNode;
-};
 
 export async function walkTemplate(
   data: ReportData | undefined,
@@ -255,7 +225,9 @@ export async function walkTemplate(
           tag === 'w:tc') &&
         isLoopExploring(ctx)
       ) {
-        fRemoveNode = true;
+        // An inline block may start after content already emitted by an outer
+        // block. Keep that content while exploring the inner block.
+        fRemoveNode = !hasTemplateText(nodeOut);
         // Delete last generated output node if the user inserted a paragraph
         // (or table row) with just a command
       } else if (tag === 'w:p' || tag === 'w:tr' || tag === 'w:tc') {
@@ -316,11 +288,20 @@ export async function walkTemplate(
         curLoop &&
         nodeIn === curLoop.refNode._parent
       ) {
-        curLoop.refNode = nodeIn;
-        curLoop.refNodeLevel -= 1;
-        logger.debug(
-          `Updated loop '${curLoop.varName}' refNode: ` + debugPrintNode(nodeIn)
+        // Only rewind a whole container when the command starts its content.
+        // Replaying preceding text could reopen an outer IF/FOR on the same line.
+        const preceding = nodeIn._children.slice(
+          0,
+          nodeIn._children.indexOf(curLoop.refNode)
         );
+        if (!preceding.some(hasTemplateText)) {
+          curLoop.refNode = nodeIn;
+          curLoop.refNodeLevel -= 1;
+          logger.debug(
+            `Updated loop '${curLoop.varName}' refNode: ` +
+              debugPrintNode(nodeIn)
+          );
+        }
       }
       const nodeOutParent = nodeOut._parent;
       if (nodeOutParent == null) throw new InternalError('node parent is null');
@@ -856,40 +837,6 @@ const processForIf = async (
   // Have we already seen this node or is it the start of a new FOR loop?
   const curLoop = getCurLoop(ctx);
   if (!(curLoop && curLoop.varName === varName)) {
-    // Check whether we already started a nested IF without and END-IF for this p or tr tag
-    if (isIf) {
-      const parentPorTrNode = findParentPorTrNode(node);
-      const parentPorTrNodeTag =
-        parentPorTrNode != null
-          ? parentPorTrNode._fTextNode
-            ? null
-            : normalizeTag(parentPorTrNode._tag)
-          : null;
-      if (parentPorTrNode != null) {
-        if (parentPorTrNodeTag === 'w:p') {
-          if (
-            ctx.pIfCheckMap.has(parentPorTrNode) &&
-            ctx.pIfCheckMap.get(parentPorTrNode) !== cmd
-          )
-            throw new InvalidCommandError(
-              'Invalid IF command nested into another IF command on the same line',
-              cmd
-            );
-          else ctx.pIfCheckMap.set(parentPorTrNode, cmd);
-        } else if (parentPorTrNodeTag === 'w:tr') {
-          if (
-            ctx.trIfCheckMap.has(parentPorTrNode) &&
-            ctx.trIfCheckMap.get(parentPorTrNode) !== cmd
-          )
-            throw new InvalidCommandError(
-              'Invalid IF command nested into another IF command on the same table row',
-              cmd
-            );
-          else ctx.trIfCheckMap.set(parentPorTrNode, cmd);
-        }
-      }
-    }
-
     const parentLoopLevel = ctx.loops.length - 1;
     const fParentIsExploring =
       parentLoopLevel >= 0 && ctx.loops[parentLoopLevel].idx === -1;
@@ -938,20 +885,6 @@ const processEndForIf = (
       } context`,
       cmd
     );
-
-  // Reset the if check flag for the corresponding p or tr parent node
-  const parentPorTrNode = findParentPorTrNode(node);
-  const parentPorTrNodeTag =
-    parentPorTrNode != null
-      ? parentPorTrNode._fTextNode
-        ? null
-        : normalizeTag(parentPorTrNode._tag)
-      : null;
-  if (parentPorTrNodeTag === 'w:p') {
-    ctx.pIfCheckMap.delete(<Node>parentPorTrNode);
-  } else if (parentPorTrNodeTag === 'w:tr') {
-    ctx.trIfCheckMap.delete(<Node>parentPorTrNode);
-  }
 
   // First time we visit an END-IF node, we assign it the arbitrary name
   // generated when the IF was processed
