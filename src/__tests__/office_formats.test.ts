@@ -1,6 +1,7 @@
+import { customRunJs } from './customRunJs';
 import JSZip from 'jszip';
 import { createReport, listCommands } from '../index';
-import { BUILT_IN_COMMANDS } from '../types';
+import { BUILT_IN_COMMANDS, RunJSFunc } from '../types';
 import { parseXml } from '../xml';
 
 const namespaces = `xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
@@ -29,14 +30,15 @@ async function presentation(parts: Record<string, string>) {
 async function render(
   parts: Record<string, string>,
   data: object = {},
-  noSandbox = false
+  runJs?: RunJSFunc
 ) {
   const template = await presentation(parts);
-  const output = await createReport({ template, data, noSandbox });
+  const output = await createReport({ template, data, runJs });
   return JSZip.loadAsync(output);
 }
 
-describe.each([false, true])('PowerPoint (noSandbox=%s)', noSandbox => {
+describe.each(['default', 'custom runJs'])('PowerPoint (%s)', execution => {
+  const runJs = execution === 'custom runJs' ? customRunJs : undefined;
   it('renders split commands, multiple slides, notes, layouts, and masters', async () => {
     const split =
       '<a:p><a:r><a:t>{</a:t></a:r><a:r><a:t>{ INS ti</a:t></a:r><a:r><a:t>tle }</a:t></a:r><a:r><a:t>}</a:t></a:r></a:p>';
@@ -49,7 +51,7 @@ describe.each([false, true])('PowerPoint (noSandbox=%s)', noSandbox => {
       'slideLayouts/slideLayout1.xml': slide(shape(paragraph('{{ title }}'))),
       'slideMasters/slideMaster1.xml': slide(shape(paragraph('{{ title }}'))),
     };
-    const output = await render(parts, { title: 'Sales & growth' }, noSandbox);
+    const output = await render(parts, { title: 'Sales & growth' }, runJs);
     for (const name of Object.keys(parts)) {
       const xml = await output.file(`ppt/${name}`)!.async('string');
       expect(xml).toContain('Sales &amp; growth');
@@ -76,7 +78,7 @@ describe.each([false, true])('PowerPoint (noSandbox=%s)', noSandbox => {
     const output = await render(
       { 'slides/slide1.xml': slide(shape(text)) },
       { items: ['A', 'B'], visible: true },
-      noSandbox
+      runJs
     );
     const xml = await output.file('ppt/slides/slide1.xml')!.async('string');
     expect(xml).toContain('Item: A');
@@ -90,7 +92,7 @@ describe.each([false, true])('PowerPoint (noSandbox=%s)', noSandbox => {
     const output = await render(
       { 'slides/slide1.xml': slide(shape(paragraph('{{ text }}'))) },
       { text: 'First\nSecond' },
-      noSandbox
+      runJs
     );
     const xml = await output.file('ppt/slides/slide1.xml')!.async('string');
     expect(xml).toMatch(/First<\/a:t><\/a:r><a:br\/><a:r><a:t[^>]*>Second/);
@@ -102,7 +104,7 @@ describe.each([false, true])('PowerPoint (noSandbox=%s)', noSandbox => {
     const output = await render(
       { 'slides/slide1.xml': slide(shape(paragraph('Hello {{ title }}!'))) },
       { title: 'World' },
-      noSandbox
+      runJs
     );
     const xml = await output.file('ppt/slides/slide1.xml')!.async('string');
     expect(xml).toMatch(/<a:t[^>]*>Hello World!<\/a:t>/);
@@ -123,7 +125,7 @@ describe.each([false, true])('PowerPoint (noSandbox=%s)', noSandbox => {
       const output = await render(
         { 'slides/slide1.xml': slide(table) },
         { items },
-        noSandbox
+        runJs
       );
       const xml = await output.file('ppt/slides/slide1.xml')!.async('string');
       expect(xml.match(/<a:tr\b/g) ?? []).toHaveLength(items.length);
@@ -150,7 +152,7 @@ describe.each([false, true])('PowerPoint (noSandbox=%s)', noSandbox => {
         },
         link: { url: 'https://example.com', label: 'Visit' },
       },
-      noSandbox
+      runJs
     );
     for (const name of ['slide1', 'slide2']) {
       const xml = await output.file(`ppt/slides/${name}.xml`)!.async('string');

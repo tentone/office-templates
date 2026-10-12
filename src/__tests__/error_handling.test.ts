@@ -1,3 +1,4 @@
+import { customRunJs } from './customRunJs';
 import path from 'path';
 import fs from 'fs';
 import QR from 'qrcode';
@@ -23,8 +24,8 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
   }
 };
 
-['noSandbox', 'sandbox'].forEach(sbStatus => {
-  const noSandbox = sbStatus === 'sandbox' ? false : true;
+['default', 'custom runJs'].forEach(sbStatus => {
+  const runJs = sbStatus === 'custom runJs' ? customRunJs : undefined;
 
   describe(`${sbStatus}`, () => {
     describe('rejectNullish setting', () => {
@@ -36,7 +37,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
         // When not explicitly set, rejectNullish should be considered 'false' so this case should resolve.
         await expect(
           createReport({
-            noSandbox,
+            runJs,
             template,
             data: {
               testobj: {}, // accessing a non-existing property will result in `undefined`
@@ -48,7 +49,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
         // The same case should throw when we decide NOT to accept nullish values.
         await expect(
           createReport({
-            noSandbox,
+            runJs,
             template,
             data: {
               testobj: {}, // accessing a non-existing property will result in `undefined`
@@ -61,7 +62,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
         // Should be ok when we actually set the value.
         await expect(
           createReport({
-            noSandbox,
+            runJs,
             template,
             data: {
               testobj: { value: 'the value is now set' },
@@ -78,7 +79,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
         );
         await expect(
           createReport({
-            noSandbox,
+            runJs,
             template,
             data: {},
             additionalJsContext: {
@@ -89,7 +90,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
 
         await expect(
           createReport({
-            noSandbox,
+            runJs,
             template,
             data: {},
             rejectNullish: true,
@@ -101,7 +102,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
 
         await expect(
           createReport({
-            noSandbox,
+            runJs,
             template,
             data: {},
             rejectNullish: true,
@@ -127,7 +128,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
 
         const result = await createReport(
           {
-            noSandbox,
+            runJs,
             template,
             data: {
               testobj: {}, // accessing a non-existing property will result in `undefined`
@@ -152,14 +153,14 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
 
         // First check whether the CommandExecutionError is triggered correctly
         await expect(
-          createReport({ noSandbox, template, data: {} })
+          createReport({ runJs, template, data: {} })
         ).rejects.toThrow(CommandExecutionError);
 
         // Now try with an errorHandler
         expect(
           await createReport(
             {
-              noSandbox,
+              runJs,
               template,
               data: {},
               errorHandler: (err, code) => 'no problem dude',
@@ -178,7 +179,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
         expect(
           await createReport(
             {
-              noSandbox,
+              runJs,
               template,
               data: {},
               errorHandler: (err, code) => {
@@ -200,7 +201,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
 
         await expect(
           createReport({
-            noSandbox,
+            runJs,
             template,
             data: {},
             errorHandler: (err, code) => {
@@ -220,7 +221,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
         expect(
           await createReport(
             {
-              noSandbox,
+              runJs,
               template,
               data: {},
               errorHandler: (err, code) => {
@@ -245,7 +246,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
     );
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {
           companies: {
@@ -264,7 +265,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
     );
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {
           companies: {
@@ -284,7 +285,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
 
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {
           companies: {
@@ -307,7 +308,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
     );
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {},
         rejectNullish: true,
@@ -324,7 +325,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
     );
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {},
         rejectNullish: false, // needs to be false for the expected error to trigger instead of the NullishCommandResultError.
@@ -340,7 +341,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
     );
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {},
       })
@@ -355,7 +356,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
     );
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {},
       })
@@ -370,7 +371,7 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
     );
     await expect(
       createReport({
-        noSandbox,
+        runJs,
         template,
         data: {},
       })
@@ -379,13 +380,13 @@ const getError = async <TError>(call: () => unknown): Promise<TError> => {
 });
 
 describe('errors from different realms', () => {
-  it('sandbox', async () => {
+  it('custom sandbox', async () => {
     const template = await fs.promises.readFile(
       path.join(__dirname, 'fixtures', 'referenceError.docx')
     );
 
     const error = await getError(() =>
-      createReport({ noSandbox: false, template, data: {} })
+      createReport({ runJs: customRunJs, template, data: {} })
     );
     expect(error).toBeInstanceOf(CommandExecutionError);
 
@@ -399,14 +400,12 @@ describe('errors from different realms', () => {
     );
   });
 
-  it('noSandbox', async () => {
+  it('default execution', async () => {
     const template = await fs.promises.readFile(
       path.join(__dirname, 'fixtures', 'referenceError.docx')
     );
 
-    const error = await getError(() =>
-      createReport({ noSandbox: true, template, data: {} })
-    );
+    const error = await getError(() => createReport({ template, data: {} }));
     expect(error).toBeInstanceOf(CommandExecutionError);
 
     // Without sandboxing, the error is from the same realm

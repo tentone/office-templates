@@ -34,10 +34,15 @@ export type DataResolver = () => ReportData | Promise<ReportData>;
 
 type ErrorHandler = (e: Error, raw_code?: string) => any;
 
-type RunJSFunc = (o: { sandbox: SandBox; ctx: Context }) => {
+export type RunJSResult = {
   modifiedSandbox: SandBox;
   result: unknown;
 };
+
+export type RunJSFunc = (o: {
+  sandbox: SandBox;
+  ctx: Context;
+}) => RunJSResult | Promise<RunJSResult>;
 
 export type UserOptions = {
   /**
@@ -61,11 +66,10 @@ export type UserOptions = {
    */
   processLineBreaks?: boolean; // true by default
   /**
-   * INSECURE: Set this option to true to disable running all commands in a new JS-VM. USE ONLY WITH TRUSTED TEMPLATES. Beware of arbitrary code injection risks. Can slightly improve performance on complex templates.
-   */
-  noSandbox?: boolean;
-  /**
-   * Custom sandbox. See documentation for details.
+   * Override JavaScript execution, for example with a caller-provided sandbox.
+   * Receives the command in sandbox.__code__ and the template context.
+   * Return { modifiedSandbox, result }; both the return value and result may be promises.
+   * Without this option, commands execute directly without isolation.
    */
   runJs?: RunJSFunc;
   /**
@@ -145,7 +149,6 @@ export type CreateReportOptions = {
   cmdDelimiter: [string, string];
   literalXmlDelimiter: string;
   processLineBreaks: boolean;
-  noSandbox: boolean;
   runJs?: RunJSFunc;
   additionalJsContext: Object;
   failFast: boolean;

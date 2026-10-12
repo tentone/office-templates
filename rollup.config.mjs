@@ -36,9 +36,6 @@ export default defineConfig([{
     {
       name: 'module-map',
       resolveId(id) {
-        if (id === 'vm') {
-          return this.resolve('vm-browserify')
-        }
         if (id === 'stream') {
           return this.resolve('stream-browserify')
         }

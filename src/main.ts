@@ -130,7 +130,6 @@ async function prepSecondaryXMLs(
  *   cmdDelimiter: ['{{', '}}'],
  *   literalXmlDelimiter: '||',
  *   processLineBreaks: true,
- *   noSandbox: false,
  * });
  * ```
  *
@@ -162,7 +161,6 @@ async function createReport(
     literalXmlDelimiter,
     processLineBreaks:
       options.processLineBreaks != null ? options.processLineBreaks : true,
-    noSandbox: options.noSandbox || false,
     runJs: options.runJs,
     additionalJsContext: options.additionalJsContext || {},
     failFast: options.failFast == null ? true : options.failFast,
@@ -373,7 +371,6 @@ export async function listCommands(
     // Otherwise unused but mandatory options
     literalXmlDelimiter: DEFAULT_LITERAL_XML_DELIMITER,
     processLineBreaks: true,
-    noSandbox: false,
     additionalJsContext: {},
     failFast: false,
     rejectNullish: false,

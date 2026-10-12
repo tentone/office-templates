@@ -1,4 +1,3 @@
-import vm from 'vm';
 import { getCurLoop } from './reportUtils';
 import { ReportData, Context, SandBox } from './types';
 import {
@@ -8,11 +7,8 @@ import {
 } from './errors';
 import { logger } from './debug';
 
-// Runs a user snippet in a sandbox, and returns the result.
-// The snippet can return a Promise, which is then awaited.
-// The sandbox is kept for the execution of snippets later on
-// in the template. Sandboxing can also be disabled via
-// ctx.options.noSandbox.
+// Run a snippet directly or through the caller's runJs implementation.
+// Await its result and retain the execution context for subsequent commands.
 export async function runUserJsAndGetRaw(
   data: ReportData | undefined,
   code: string,
@@ -42,17 +38,13 @@ export async function runUserJsAndGetRaw(
   let result;
   try {
     if (ctx.options.runJs) {
-      const temp = ctx.options.runJs({ sandbox, ctx });
+      const temp = await ctx.options.runJs({ sandbox, ctx });
       context = temp.modifiedSandbox;
       result = await temp.result;
-    } else if (ctx.options.noSandbox) {
+    } else {
       context = sandbox;
       const wrapper = new Function('with(this) { return eval(__code__); }');
       result = await wrapper.call(context);
-    } else {
-      const script = new vm.Script(sandbox.__code__ ?? '');
-      context = vm.createContext(sandbox);
-      result = await script.runInContext(context);
     }
   } catch (err) {
     const e = isError(err) ? err : new Error(`${err}`);

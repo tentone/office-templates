@@ -17,7 +17,7 @@ $ npm install office-templates
 * Add **loops** with `FOR`/`END-FOR` commands, with support for table rows, nested loops, and JavaScript processing of elements (filter, sort, etc)
 * Include contents **conditionally**, `IF` a certain JavaScript expression is truthy
 * Define custom **aliases** for some commands (`ALIAS`) — useful for writing table templates!
-* Run all JavaScript in a **separate Node VM** or a user-provided sandbox.
+* Execute JavaScript directly, or provide your own sandbox through `runJs`.
 * Include **literal XML**
 * Written in TypeScript, so ships with type definitions.
 * Plenty of **examples** in this repo (with Node, Webpack and Browserify)
@@ -52,7 +52,8 @@ Contributions are welcome!
   - [Error types](#error-types)
   - [Custom error handler](#custom-error-handler)
 - [Inspecting templates](#inspecting-templates)
-- [Performance & security](#performance--security)
+- [JavaScript execution and custom sandboxes](#javascript-execution-and-custom-sandboxes)
+  - [Execution migration](#execution-migration)
 - [Similar projects](#similar-projects)
 - [License (MIT)](#license-mit)
 
@@ -104,7 +105,6 @@ const report = await createReport({
   cmdDelimiter: ['{{', '}}'],
   literalXmlDelimiter: '||',
   processLineBreaks: true,
-  noSandbox: false,
 
   /**
    * Whether to fail on the first error encountered in the template. Defaults to true. Can be used to collect all errors in a template (e.g. misspelled commands) before failing.
@@ -166,7 +166,7 @@ For Deno, follow the Browser guide and import a local copy of the polyfilled bun
 import { createReport } from './lib/browser.js';
 ```
 
-> Note that you have to set `noSandbox: true` or bring your own sandbox with the `runJs` option.
+JavaScript executes directly by default. Use `runJs` if you want to supply a sandbox compatible with Deno.
 
 # Browser usage
 
@@ -219,7 +219,7 @@ You can find an example implementation of `saveDataToFile()` [in the Webpack exa
 Check out the examples [using Webpack](examples/example-webpack) and [using Browserify](examples/example-browserify) or you can use the browserified bundle directly as discussed below.
 
 ## Polyfilled browser-ready bundle
-As this library depends on the internal NodeJS modules `vm`, `stream`, `util`, `events` and the `Buffer` global, your build tools have to polyfill these modules when using the library in the browser. We provide a browser build which includes the required polyfills. Its file size is about 300K uncompressed or 85K / 70K with gzip / brotli compression).
+The browser build includes the polyfills needed by the library, including `Buffer` and streams. There is no VM polyfill or built-in sandbox. If you bundle the library yourself, provide the polyfills required by its dependencies.
 
 Host the `lib/browser.js` bundle yourself and import it directly as a module:
 
@@ -233,7 +233,7 @@ The browser bundle targets `es2017`. Compile it to your target if you need to su
 Note that the JavaScript code in your .docx or .pptx template will be run as-is by the browser. Transpilers like Babel can't see this code, and won't be able to polyfill it. This means that the JS code in your template needs to be compatible with the browsers you are targeting. In other words: don't use fancy modern syntax and functions in your template if you want older browsers, like IE11, to be able to render it.
 
 ## Running within a Web Worker
-Note that you need to disable the sandbox mode using the `noSandbox: true` option to be able to run `createReport` from within a web worker. This is because the default sandbox mode browser polyfills require access to the `iframe` API, which is not available from a web worker context. Make sure you are aware of the security implications of disabling the sandbox.
+You can run `createReport` in a Web Worker without any execution-mode options. If you provide `runJs`, its implementation must work in that worker environment.
 
 # Writing templates
 
@@ -350,11 +350,11 @@ Executes a given JavaScript snippet, just like `INS` or `=`, but doesn't insert 
 
 ```
 {{EXEC
-myFun = () => Math.random();
-MY_CONSTANT = 3;
+this.myFun = () => Math.random();
+this.MY_CONSTANT = 3;
 }}
 
-{{! ANOTHER_CONSTANT = 5; }}
+{{! this.ANOTHER_CONSTANT = 5; }}
 ```
 
 Usage elsewhere will then look like
@@ -367,11 +367,11 @@ Usage elsewhere will then look like
 
 **A note on scoping:**
 
-When disabling sandbox mode (noSandbox: true), the scoping behaviour is slightly different. Disabling the sandbox will execute each EXEC snippet's code in a `with(this){...}` context, where this is the 'context' object. This 'context' object is re-used between the code snippets of your template. The critical difference outside of sandbox mode is that you are not declaring functions and variables in the global scope by default. The only way to assign to the global scope is to assign declarations as properties of the context object. This is simplified by the `with(context){}` wrapper: all global declarations are actually added as properties to this context object. Locally scoped declarations are not. _The above examples should work in both `noSandbox: true` and `noSandbox: false`.
+By default, snippets execute with `with(this) { return eval(__code__); }`, using an execution context that is retained between commands within each document part. Use explicit context assignments such as `this.MY_CONSTANT = 3` to make new values available to later commands. Local declarations such as `const`, `let`, and function declarations do not persist between evaluations. A custom `runJs` implementation determines its own scoping behavior.
 
 This example declares the test function in the context object, making it callable from another snippet.
 ```js
-test = () => {};
+this.test = () => {};
 ```
 
 While the below example only declares test in the local scope of the snippet, meaning it gets garbage collected after the snippet has executed.
@@ -694,17 +694,47 @@ The `getMetadata` function lets you extract the metadata fields from a document,
       }
 ```
 
-# Performance & security
+# JavaScript execution and custom sandboxes
 
-**Templates can contain arbitrary javascript code. Beware of code injection risks!**
+By default, template commands execute directly through JavaScript's `Function` and `eval`, without isolation. The library does not include a VM or a sandbox. Only render trusted templates with the default executor.
 
-Obviously, this is less of an issue when running office-templates in a browser environment.
+To provide your own sandbox, pass a `runJs` callback to `createReport`. The callback receives `{ sandbox, ctx }`:
 
-Regardless of whether you are using sandboxing or not (`noSandbox: true`), be aware that allowing users to upload arbitrary templates to be executed on your server poses a significant security threat. Use at your own risk.
+- `sandbox.__code__` contains the JavaScript snippet to evaluate.
+- `sandbox` also contains the report data, `additionalJsContext`, saved bindings from prior commands, and current loop variables such as `$item` and `$idx`.
+- `ctx` contains the template execution context.
 
-The library uses `require('vm')` as its default sandboxing environment. Note that this sandbox is explicitly _not_ meant to be used as a security mechanism. You can provide your own sandboxing environment if you want, as shown in [this example project](examples/example-vm2).
+Return `{ modifiedSandbox, result }`. `modifiedSandbox` must contain the bindings you want to retain for later commands. The callback itself and its `result` may both be promises; the library awaits them. Each document part starts with a fresh execution context. The library resets the internal `__code__` and `__result__` fields before the next command.
 
-Note that turning off the sandbox (`noSandbox: true`) is known to give significant performance improvements when working with large templates or datasets. However, before you do this, make sure you are aware of the security implications.
+For example, if your sandbox adapter exposes an asynchronous `evaluate(code, bindings)` method returning `{ bindings, value }`, connect it like this:
+
+```js
+import createReport from 'office-templates';
+import { sandboxEngine } from './my-sandbox.js';
+
+const report = await createReport({
+  template,
+  data: { name: 'John' },
+  runJs: async ({ sandbox }) => {
+    const { __code__, __result__, ...bindings } = sandbox;
+    const evaluation = await sandboxEngine.evaluate(__code__, bindings);
+    return {
+      modifiedSandbox: {
+        ...evaluation.bindings,
+        __code__: undefined,
+        __result__: undefined,
+      },
+      result: evaluation.value,
+    };
+  },
+});
+```
+
+Adapt the callback to your sandbox's API. Errors thrown by the callback and rejected promises follow the same `errorHandler` and `failFast` behavior as the default executor. Your chosen sandbox is responsible for isolation, exposed capabilities, and execution limits.
+
+## Execution migration
+
+The built-in VM and `noSandbox` option have been removed. Remove `noSandbox` from existing calls. Direct execution is now the default; applications that need isolation must supply `runJs`.
 
 # Similar projects
 
