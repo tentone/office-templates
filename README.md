@@ -4,8 +4,10 @@
  - Template-based docx and pptx report creation for both Node and the browser.
  - The documents are created using Word or Powerpoint, placeholders can be added directly in the file.
  - Execute JavaScript snippets (`EXEC` command, or `!` for short)
+   - Note that the JavaScript code in your .docx or .pptx template will be run as-is by the browser.
+Transpilers  can't see this code, and won't be able to polyfill it.
  - Embed images, hyperlinks and even HTML dynamically (`IMAGE`, `LINK`, `HTML`).
-  - Logic loops with `FOR`/`END-FOR` commands, with support for table rows, nested loops amnd conditionals using `IF`.
+   - Logic loops with `FOR`/`END-FOR` commands, with support for table rows, nested loops amnd conditionals using `IF`.
  - Possible to isolate the javascript execution with your own sandbox through `runJs`.
  - Include **literal XML** for custom attributes (e.g. color changes)
  - Supports `.docx` and `.pptx`, as well as macro-enabled `.docm` and `.pptm` templates.
@@ -49,79 +51,89 @@ const report = await createReport({
 
 ```js
 const report = await createReport({
-  // Additional data to be provided to the template.
-  // 
-  // All of these will be available to JS snippets in your template commands 
+  /* Additional data to be provided to the template.
+   * 
+   * All of these will be available to JS snippets in your template commands.
+   */
   additionalJsContext: {
     foo: 'bar',
     qrCode: async url => {
       /* build QR and return image data */
     },
   },
+  
+  /*
+   * Delimiter for template commands
+   */
   cmdDelimiter: ['{{', '}}'],
+  
+  /*
+   * Delimiter to wrap literal XML that will be injected in the model.
+   */
   literalXmlDelimiter: '||',
+
+  /*
+   * Process line breaks
+   */
   processLineBreaks: true,
 
-  // Whether to fail on the first error encountered in the template.
-  // 
-  // Defaults to true. Can be used to collect all errors in a template (e.g. misspelled commands) before failing.
+  /* Whether to fail on the first error encountered in the template.
+   *
+   * Can be used to collect all errors in a template (e.g. misspelled commands) before failing.
+   */
   failFast: true,
 
-  // When set to `true`, this setting ensures createReport throws an error when the result of an INS, HTML, IMAGE, or LINK command turns out to be null or undefined, as this usually indicates a mistake in the template or the invoking code (defaults to `false`).
+  /* This setting ensures createReport throws an error when the result of an INS, HTML, IMAGE, or LINK command turns out to be null or undefined, as this usually indicates a mistake in the template or the invoking code.
+   */
   rejectNullish: false,
 
-  /**
-   * MS Word usually autocorrects JS string literal quotes with unicode 'smart' quotes ('curly' quotes). E.g. 'aubergine' -> ‘aubergine’.
+  /* MS Word usually autocorrects JS string literal quotes with unicode 'smart' quotes ('curly' quotes). E.g. 'aubergine' -> ‘aubergine’.
+   *
    * This causes an error when evaluating commands containing these smart quotes, as they are not valid JavaScript.
+   * 
    * If you set fixSmartQuotes to 'true', these smart quotes will automatically get replaced with straight quotes (') before command evaluation.
-   * Defaults to false.
    */
   fixSmartQuotes: false,
 
   /**
    * Maximum loop iterations allowed when walking through the template.
+   * 
    * You can increase this to generate reports with large amount of FOR loop elements.
+   * 
    * Tip: You can disable infinite loop protection by using the `Infinity` constant.
+   * 
    * This may be useful if you implement a process timeout instead.
-   * (Default: 1,000,000)
    */
   maximumWalkingDepth: 1_000_000,
+
   /**
    * Whether to indent the generated XML to make it more human-readable.
+   * 
    * Tip: Set this to true if you want to inspect the generated XML or if you want to use a diff tool to compare the generated Office file with another one.
+   * 
    * Leaving this option to false will result in a smaller file size.
-   * (Default: true)
    */
   indentXml: true,
+
   /**
-   * Whether to preserve whitespace in the generated XML.*
+   * Whether to preserve whitespace in the generated XML.
+   * 
    * Tip: Set this to true if your template contains significant whitespace that you want to preserve in the output document.
+   * 
    * Leaving this option to false will result in a smaller file size.
-   * (Default: true)
    */
   preserveSpace: true,
+
   /**
    * Compression level for the generated Office file.
+   * 
    * Integer between 0 (no compression, fastest) and 9 (maximum compression, slowest).
-   * (Default: 1)
    */
   compressionLevel: 1,
 });
 ```
 
-## Browser compatibility
-Note that the JavaScript code in your .docx or .pptx template will be run as-is by the browser.
-Transpilers  can't see this code, and won't be able to polyfill it.
-
-
-# Writing templates
-You can find several template examples in this repo:
-
-* [SWAPI](examples/example-node), a good example of what you can achieve loading GraphQL data in your application for a report, including a simple script for report generation. Uses the freak-ish online Star Wars GraphQL API.
-* [Dynamic images](examples/example-node): with examples of images that are dynamically downloaded or created. Check out the _images-many-tiles_ example for a taste of this powerful feature.
-* Browser-based examples [using Webpack](examples/example-webpack) and [using Browserify](examples/example-browserify).
-
-## PowerPoint templates
+## Templates
 
 The format is detected from the package manifest. The same API accepts `.docx` and `.pptx` templates and returns the same format as the input:
 
@@ -131,34 +143,15 @@ const buffer = await createReport({ template, data: { title: 'Quarterly update' 
 fs.writeFileSync('report.pptx', buffer);
 ```
 
-Place `{{ title }}` or `{{ INS title }}` in a slide text box. Commands are processed in slides, speaker notes, layouts, and masters, including commands split across formatted text runs. `INS`, `EXEC`, `ALIAS`, `FOR`/`END-FOR`, `IF`/`END-IF`, `IMAGE`, and `LINK` work in PowerPoint. Loops repeat paragraphs or table rows within a part; they do not duplicate whole slides and cannot span slides. JavaScript context starts fresh for each part.
-
-Use a dedicated text shape for an `IMAGE` command: the shape is replaced by a picture at the same position, with the requested dimensions. Image captions are Word-only. `LINK` creates a clickable text run. `HTML` is Word-only and raises an error in PowerPoint, which has no equivalent of Word's HTML import element.
-
-For browser downloads, use the `.pptx` extension and `application/vnd.openxmlformats-officedocument.presentationml.presentation` MIME type.
-
-
-## Custom command delimiters
-The default wrappers are `{{` and `}}`. You can use different **left/right command delimiters** by passing an array to `cmdDelimiter`:
-
-```js
-const report = await createReport({
-  // ...
-  cmdDelimiter: ['{', '}'],
-})
-```
-
-This allows much cleaner-looking templates!
-
-Then you can add commands and JS snippets in your template like this: `{foo}`, `{project.name}`, `{FOR ...}`.
-
-When choosing a delimiter, take care not to introduce conflicts with JS syntax, especially if you are planning to use larger JS code snippets in your templates. For example, with `['{', '}']` you may run into conflicts as the brackets in your JS code may be mistaken for command delimiters. As an alternative, consider using multi-character delimiters, like `{#` and `#}`.
+ - Place `{{ title }}` or `{{ INS title }}` in a slide text box. Commands are processed in slides, speaker notes, layouts, and masters, including commands split across formatted text runs. `INS`, `EXEC`, `ALIAS`, `FOR`/`END-FOR`, `IF`/`END-IF`, `IMAGE`, and `LINK` work in PowerPoint.
+ - Loops repeat paragraphs or table rows within a part; they do not duplicate whole slides and cannot span slides. JavaScript context starts fresh for each part.
+ - Use a dedicated text shape for an `IMAGE` command: the shape is replaced by a picture at the same position, with the requested dimensions. Image captions are Word-only. `LINK` creates a clickable text run. `HTML` is Word-only and raises an error in PowerPoint, which has no equivalent of Word's HTML import element.
+ - For browser downloads, use the `.pptx` extension and `application/vnd.openxmlformats-officedocument.presentationml.presentation` MIME type.
 
 
-## Supported commands
-Currently supported commands are defined below.
+## Supported Commands
 
-### Insert data with the `INS` command ( or using `=`, or nothing at all)
+## `INS` or `=`
 
 Inserts the result of a given JavaScript snippet as follows.
 
@@ -236,7 +229,7 @@ Use JavaScript's ternary operator to implement an _if-else_ structure:
 {{= $details.year != null ? `(${$details.year})` : ''}}
 ```
 
-### `EXEC` (`!`)
+## `EXEC` (`!`)
 
 Executes a given JavaScript snippet, just like `INS` or `=`, but doesn't insert anything in the document. You can use `EXEC`, for example, to define functions or constants before using them elsewhere in your template.
 
@@ -271,7 +264,7 @@ While the below example only declares test in the local scope of the snippet, me
 function test() {};
 ```
 
-### `IMAGE`
+## `IMAGE`
 
 Includes an image with the data resulting from evaluating a JavaScript snippet:
 
@@ -349,7 +342,7 @@ additionalJsContext: {
   }
 ```
 
-### `LINK`
+## `LINK`
 
 Includes a hyperlink with the data resulting from evaluating a JavaScript snippet:
 
@@ -359,7 +352,7 @@ Includes a hyperlink with the data resulting from evaluating a JavaScript snippe
 
 If the `label` is not specified, the URL is used as a label.
 
-### `HTML`
+## `HTML`
 
 Takes the HTML resulting from evaluating a JavaScript snippet and converts it to Word contents.
 
@@ -378,7 +371,7 @@ Takes the HTML resulting from evaluating a JavaScript snippet and converts it to
 `}}
 ```
 
-### `FOR` and `END-FOR`
+## `FOR` and `END-FOR`
 
 Loop over a group of elements (resulting from the evaluation of a JavaScript expression):
 
@@ -462,7 +455,7 @@ Finally, you can nest loops (this example assumes a different data set):
 {{END-FOR company}}
 ```
 
-### `IF` and `END-IF`
+## `IF` and `END-IF`
 
 Include contents conditionally (depending on the evaluation of a JavaScript expression):
 
@@ -484,7 +477,7 @@ Similarly to the `FOR` command, it also works over table rows. You can also nest
 and mix & match `IF` and `FOR` commands. In fact, for the technically inclined: the `IF` command
 is implemented as a `FOR` command with 1 or 0 iterations, depending on the expression value.
 
-### `ALIAS` (and alias resolution with `*`)
+## `ALIAS` (and alias resolution with `*`)
 
 Define a name for a complete command (especially useful for formatting tables):
 
@@ -504,8 +497,9 @@ Define a name for a complete command (especially useful for formatting tables):
 ----------------------------------------------------------
 ```
 
-## Inserting literal XML
-You can also directly insert Office Open XML markup into the document using the `literalXmlDelimiter`, which is by default set to `||`.
+## Literal XML
+ - You can also directly insert Office Open XML markup into the document using the `literalXmlDelimiter`, which is by default set to `||`.
+ - Examples of usage for this feature can be 
 
 E.g. if you have a template like this:
 
@@ -523,7 +517,7 @@ await createReport({
 
 # Error handling
 
-By default, the Promise returned by `createReport` will reject with an error immediately when a problem is encountered in the template, such as a bad command (i.e. it 'fails fast'). In some cases, however, you may want to collect all errors that may exist in the template before failing. For example, this is useful when you are letting your users create templates interactively. You can disable fast-failing by providing the `failFast: false` parameter as shown below. This will make `createReport` reject with an array of errors instead of a single error so you can get a more complete picture of what is wrong with the template.
+ - By default, the Promise returned by `createReport` will reject with an error immediately when a problem is encountered in the template, such as a bad command (i.e. it 'fails fast'). In some cases, however, you may want to collect all errors that may exist in the template before failing. For example, this is useful when you are letting your users create templates interactively. You can disable fast-failing by providing the `failFast: false` parameter as shown below. This will make `createReport` reject with an array of errors instead of a single error so you can get a more complete picture of what is wrong with the template.
 
 ```typescript
 try {
@@ -545,6 +539,7 @@ try {
   }
 }
 ```
+
 ## Error types
 The library exposes the following error types. See the `errors.ts` module for details.
 
@@ -626,17 +621,17 @@ The `getMetadata` function lets you extract the metadata fields from a document,
 
 # JavaScript execution and custom sandboxes
 
-By default, template commands execute directly through JavaScript's `Function` and `eval`, without isolation. The library does not include a VM or a sandbox. Only render trusted templates with the default executor.
-
-To provide your own sandbox, pass a `runJs` callback to `createReport`. The callback receives `{ sandbox, ctx }`:
-
-- `sandbox.__code__` contains the JavaScript snippet to evaluate.
-- `sandbox` also contains the report data, `additionalJsContext`, saved bindings from prior commands, and current loop variables such as `$item` and `$idx`.
-- `ctx` contains the template execution context.
+ - By default, template commands execute directly through JavaScript's `Function` and `eval`, without isolation.
+ - The library does not include a VM or a sandbox.
+ - Only render trusted templates with the default executor.
+ - To provide your own sandbox, pass a `runJs` callback to `createReport`. The callback receives `{ sandbox, ctx }`:
+    - `sandbox.__code__` contains the JavaScript snippet to evaluate.
+    - `sandbox` also contains the report data, `additionalJsContext`, saved bindings from prior commands, and current loop variables such as `$item` and `$idx`.
+    - `ctx` contains the template execution context.
 
 Return `{ modifiedSandbox, result }`. `modifiedSandbox` must contain the bindings you want to retain for later commands. The callback itself and its `result` may both be promises; the library awaits them. Each document part starts with a fresh execution context. The library resets the internal `__code__` and `__result__` fields before the next command.
 
-For example, if your sandbox adapter exposes an asynchronous `evaluate(code, bindings)` method returning `{ bindings, value }`, connect it like this:
+ - For example, if your sandbox adapter exposes an asynchronous `evaluate(code, bindings)` method returning `{ bindings, value }`, connect it like this:
 
 ```js
 import createReport from 'office-templates';
@@ -660,19 +655,8 @@ const report = await createReport({
 });
 ```
 
-Adapt the callback to your sandbox's API. Errors thrown by the callback and rejected promises follow the same `errorHandler` and `failFast` behavior as the default executor. Your chosen sandbox is responsible for isolation, exposed capabilities, and execution limits.
-
-## Execution migration
-
-The built-in VM and `noSandbox` option have been removed. Remove `noSandbox` from existing calls. Direct execution is now the default; applications that need isolation must supply `runJs`.
-
-# Similar projects
-
-* docxtemplater supports template-based document generation.
-
-* docx and similar ones - generate docx files from scratch, programmatically. Drawbacks of this approach: they typically do not support all Word features, and producing a complex document can be challenging.
-
+ - Adapt the callback to your sandbox's API. Errors thrown by the callback and rejected promises follow the same `errorHandler` and `failFast` behavior as the default executor.
+ - Your chosen sandbox is responsible for isolation, exposed capabilities, and execution limits.
 
 # License (MIT)
-
-This Project is licensed under the MIT License. See [LICENSE](LICENSE) for more information.
+ - This Project is licensed under the MIT License. See [LICENSE](LICENSE) for more information.
