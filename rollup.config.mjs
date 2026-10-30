@@ -36,9 +36,9 @@ export default defineConfig([{
     // Map modules to polyfill
     {
       name: 'module-map',
-      resolveId(id) {
+      resolveId(id, importer, options) {
         if (id === 'stream') {
-          return this.resolve('stream-browserify')
+          return this.resolve('stream-browserify', importer, options)
         }
       }
     }

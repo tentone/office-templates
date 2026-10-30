@@ -1,3 +1,8 @@
+## Unreleased
+ - Fix dependency conflicts by aligning the build plugins with Rollup 3 while keeping versions close to the previous releases.
+ - Update TypeScript to 5.6 for compatibility with the existing Node.js type definitions.
+ - Forward Rollup resolution options when resolving the browser stream polyfill to prevent the build from exiting early.
+
 ## 1.0.0
  - First release
  - Forked form "docx-templates" V4.15.0
