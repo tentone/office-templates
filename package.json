@@ -1,6 +1,6 @@
 {
   "name": "office-templates",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Template-based docx and pptx report creation",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
