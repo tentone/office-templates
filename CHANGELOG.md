@@ -9,4 +9,5 @@
  - Remove QUERY command
  - Allow for nested IF statement
  - Keep `$idx` available inside nested IF conditions and contents, using the innermost active FOR index and restoring the outer index after an inner FOR ends.
+ - Preserve table cells, their formatting, and their rows when a false `IF` block is contained within a cell, in both DOCX and PPTX. `FOR` row and column behavior is unchanged.
  

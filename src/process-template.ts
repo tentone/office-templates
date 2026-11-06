@@ -119,6 +119,17 @@ const hasTemplateText = (node: Node): boolean =>
       node._text.length > 0
     : node._children.some(hasTemplateText);
 
+const getContainingCell = (node: Node): Node | undefined => {
+  let current: Node | undefined = node;
+  while (current) {
+    if (!current._fTextNode && normalizeTag(current._tag) === 'w:tc') {
+      return current;
+    }
+    current = current._parent;
+  }
+  return undefined;
+};
+
 const debugPrintNode = (node: Node) =>
   JSON.stringify(
     node._fTextNode
@@ -147,6 +158,7 @@ export async function walkTemplate(
   let move;
   let deltaJump = 0;
   const errors: Error[] = [];
+  const preservedCells = new WeakSet<Node>();
 
   let loopCount = 0;
   const maximumWalkingDepth = ctx.options?.maximumWalkingDepth || 1_000_000;
@@ -272,6 +284,18 @@ export async function walkTemplate(
         }
       }
 
+      // An IF wholly inside a cell only controls its contents. Preserve that
+      // cell and its row, but let enclosing FOR/IF exploration remove them.
+      if (
+        fRemoveNode &&
+        !isLoopExploring(ctx) &&
+        (tag === 'w:tc' || tag === 'w:tr') &&
+        (preservedCells.has(nodeOut) ||
+          nodeOut._children.some(child => preservedCells.has(child)))
+      ) {
+        fRemoveNode = false;
+      }
+
       // Execute removal, if needed. The node will no longer be part of the output, but
       // the parent will be accessible from the child (so that we can still move up the tree)
       if (fRemoveNode && nodeOut._parent != null) {
@@ -385,7 +409,7 @@ export async function walkTemplate(
       // case, add an empty `w:p` inside
       if (
         !nodeOut._fTextNode &&
-        normalizeTag(nodeOut._tag) === 'w:tc' &&
+        nodeOut._tag === 'w:tc' &&
         !nodeOut._children.filter(
           o =>
             !o._fTextNode &&
@@ -397,7 +421,7 @@ export async function walkTemplate(
           _parent: nodeOut,
           _children: [],
           _fTextNode: false,
-          _tag: nodeOut._tag === 'a:tc' ? 'a:p' : 'w:p',
+          _tag: 'w:p',
           _attrs: {},
         });
       }
@@ -489,6 +513,11 @@ export async function walkTemplate(
         normalizeTag(parent._tag) === 'w:t'
       ) {
         const result = await processText(data, nodeIn, ctx, processor);
+        if (ctx.pendingCellPreservation) {
+          const cell = getContainingCell(newNode);
+          if (cell) preservedCells.add(cell);
+          delete ctx.pendingCellPreservation;
+        }
         if (typeof result === 'string') {
           // TODO: improve typesafety of conversion Node to TextNode.
           (newNode as TextNode)._text = result;
@@ -921,6 +950,12 @@ const processEndForIf = (
   } else {
     // loop finished
     ctx.loops.pop();
+    if (isIf && curLoop.loopOver.length === 0 && !isLoopExploring(ctx)) {
+      const cell = getContainingCell(node);
+      if (cell && cell === getContainingCell(curLoop.refNode)) {
+        ctx.pendingCellPreservation = true;
+      }
+    }
   }
 };
 

@@ -187,6 +187,7 @@ export type Context = {
   linkId: number;
   links: Links;
   pendingHtmlNode?: TextNode | NonTextNode;
+  pendingCellPreservation?: boolean;
   htmlId: number;
   htmls: Htmls;
   vars: { [name: string]: VarValue };
