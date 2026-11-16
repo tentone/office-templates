@@ -4,6 +4,23 @@ import {
   normalizeTag,
 } from './report-utils';
 import { Node } from './types';
+import { TemplateParseError } from './errors';
+
+const styleCommand = /^\s*STYLE-TXT(?:\s|$)/i;
+
+function canCloseStyleCommand(expression: string, delimiter: string) {
+  // Skip quoted strings and comments while counting JavaScript object braces.
+  const tokens =
+    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\/\/[^\n]*(?=\n)|\/\*[\s\S]*?\*\/|([{}])|(['"`]|\/\/|\/\*)/g;
+  let depth = 0;
+  let token: RegExpExecArray | null;
+  while ((token = tokens.exec(expression))) {
+    if (token[2]) return false;
+    if (token[1] === '{') depth += 1;
+    if (token[1] === '}') depth -= 1;
+  }
+  return delimiter[0] !== '}' || depth <= 0;
+}
 
 // In-place
 // In case of split commands (or even split delimiters), joins all the pieces
@@ -11,7 +28,8 @@ import { Node } from './types';
 const preprocessTemplate = (
   template: Node,
   delimiter: [string, string],
-  preserveSpace: boolean
+  preserveSpace: boolean,
+  fixSmartQuotes = false
 ) => {
   let node: Node | null = template;
   let fCmd = false;
@@ -52,6 +70,19 @@ const preprocessTemplate = (
 
         // Matches the expected delimiter character
         if (c === currentDelimiter[idxDelimiter]) {
+          const command = fCmd ? openNode._text.slice(delimiter[0].length) : '';
+          const isStyleCommand = styleCommand.test(command);
+          if (isStyleCommand && idxDelimiter === 0) {
+            const expression = fixSmartQuotes
+              ? command
+                  .replace(/[\u201C\u201D\u201E]/g, '"')
+                  .replace(/[\u2018\u2019\u201A]/g, "'")
+              : command;
+            if (!canCloseStyleCommand(expression, currentDelimiter)) {
+              openNode._text += c;
+              continue;
+            }
+          }
           idxDelimiter += 1;
 
           // Finished matching delimiter? Then toggle `fCmd`,
@@ -65,6 +96,7 @@ const preprocessTemplate = (
               if (fNodesMatch) node = openNode;
             }
             openNode._text += currentDelimiter;
+            if (!fCmd && isStyleCommand) openNode._command = command;
             if (!fCmd && i < textIn.length - 1) {
               openNode = insertTextSiblingAfter(openNode);
               if (fNodesMatch) node = openNode;
@@ -110,6 +142,13 @@ const preprocessTemplate = (
       }
       if (!fFound) node = null;
     }
+  }
+  if (
+    fCmd &&
+    openNode &&
+    styleCommand.test(openNode._text.slice(delimiter[0].length))
+  ) {
+    throw new TemplateParseError('Unclosed STYLE-TXT command delimiter');
   }
   return template;
 };

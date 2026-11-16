@@ -36,6 +36,7 @@ import {
   UnterminatedForLoopError,
 } from './errors';
 import { logger } from './debug';
+import { applyWordTextStyles, resolveTextStyle } from './text-style';
 
 export function newContext(
   options: CreateReportOptions,
@@ -62,6 +63,7 @@ export function newContext(
     htmls: {},
     vars: {},
     loops: [],
+    textStyles: [],
     fJump: false,
     shorthands: {},
     options,
@@ -519,8 +521,9 @@ export async function walkTemplate(
           delete ctx.pendingCellPreservation;
         }
         if (typeof result === 'string') {
-          // TODO: improve typesafety of conversion Node to TextNode.
-          (newNode as TextNode)._text = result;
+          const text = newNode as TextNode;
+          text._text = result;
+          trackTextStyle(ctx, text);
           logger.debug(
             `Inserted command result string into node. Updated node: ` +
               debugPrintNode(newNode)
@@ -567,11 +570,19 @@ export async function walkTemplate(
     }
   }
 
+  if (ctx.textStyles.length > 0) {
+    const err = new InvalidCommandError('Missing STYLE-TXT-END', 'STYLE-TXT');
+    if (ctx.options.failFast) throw err;
+    errors.push(err);
+  }
+
   if (errors.length > 0)
     return {
       status: 'errors',
       errors,
     };
+
+  if (ctx.styledText) applyWordTextStyles(out, ctx.styledText);
 
   return {
     status: 'success',
@@ -597,10 +608,13 @@ const processText = async (
   const { cmdDelimiter, failFast } = ctx.options;
   const text = node._text;
   if (text == null || text === '') return '';
-  const segments = text
-    .split(cmdDelimiter[0])
-    .map(s => s.split(cmdDelimiter[1]))
-    .reduce((x, y) => x.concat(y));
+  const segments =
+    node._command !== undefined
+      ? ['', node._command, '']
+      : text
+          .split(cmdDelimiter[0])
+          .map(s => s.split(cmdDelimiter[1]))
+          .reduce((x, y) => x.concat(y));
   let outText = '';
   const errors: Error[] = [];
   for (let idx = 0; idx < segments.length; idx++) {
@@ -676,6 +690,33 @@ const processCmd: CommandProcessor = async (
       // END-IF
     } else if (cmdName === 'END-FOR' || cmdName === 'END-IF') {
       processEndForIf(node, ctx, cmd, cmdName, cmdRest);
+    } else if (cmdName === 'STYLE-TXT' || cmdName === 'STYLE-TXT-END') {
+      if (ctx.options.documentType === 'pptx') {
+        throw new InvalidCommandError(
+          'STYLE-TXT is only supported in Word templates',
+          cmd
+        );
+      }
+      if (!isLoopExploring(ctx)) {
+        if (cmdName === 'STYLE-TXT') {
+          const inherited = ctx.textStyles[ctx.textStyles.length - 1];
+          // Keep the scope balanced if a custom error handler recovers.
+          ctx.textStyles.push(inherited);
+          if (!cmdRest) throw new CommandSyntaxError(cmd);
+          const result = await runUserJsAndGetRaw(data, `(${cmdRest}\n)`, ctx);
+          ctx.textStyles[ctx.textStyles.length - 1] = resolveTextStyle(
+            result,
+            inherited,
+            cmd
+          );
+        } else {
+          if (cmdRest) throw new CommandSyntaxError(cmd);
+          if (!ctx.textStyles.length) {
+            throw new InvalidCommandError('Unexpected STYLE-TXT-END', cmd);
+          }
+          ctx.textStyles.pop();
+        }
+      }
 
       // INS <expression>
     } else if (cmdName === 'INS') {
@@ -1208,15 +1249,24 @@ const processLink = async (
     ]);
     return;
   }
+  const text = newTextNode(label);
+  trackTextStyle(ctx, text);
   const link = node('w:hyperlink', { 'r:id': relId, 'w:history': '1' }, [
     node('w:r', {}, [
       textRunPropsNode ||
         node('w:rPr', {}, [node('w:u', { 'w:val': 'single' })]),
-      node('w:t', {}, [newTextNode(label)]),
+      node('w:t', {}, [text]),
     ]),
   ]);
   ctx.pendingLinkNode = link;
 };
+
+function trackTextStyle(ctx: Context, text: TextNode) {
+  const style = ctx.textStyles[ctx.textStyles.length - 1];
+  if (style && text._text) {
+    (ctx.styledText ??= new WeakMap()).set(text, style);
+  }
+}
 
 const processHtml = async (ctx: Context, data: string) => {
   let relId: string;

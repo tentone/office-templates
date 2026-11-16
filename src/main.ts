@@ -105,7 +105,8 @@ async function prepSecondaryXMLs(
     const js = preprocessTemplate(
       js0,
       options.cmdDelimiter,
-      options.preserveSpace
+      options.preserveSpace,
+      options.fixSmartQuotes
     );
     prepped_secondaries.push([js, f]);
   }
@@ -198,7 +199,8 @@ async function createReport(
   const prepped_template = preprocessTemplate(
     jsTemplate,
     createOptions.cmdDelimiter,
-    createOptions.preserveSpace
+    createOptions.preserveSpace,
+    createOptions.fixSmartQuotes
   );
 
   const reportData = typeof data === 'function' ? await data() : data;
@@ -391,14 +393,12 @@ export async function listCommands(
     templatePath,
     opts
   );
-  const xmls = [jsTemplate, ...secondaries.map(([js, path]) => js)];
+  const xmls = [
+    preprocessTemplate(jsTemplate, opts.cmdDelimiter, opts.preserveSpace),
+    ...secondaries.map(([js]) => js),
+  ];
   const commands: CommandSummary[] = [];
-  for (const js of xmls) {
-    const prepped = preprocessTemplate(
-      js,
-      opts.cmdDelimiter,
-      opts.preserveSpace
-    );
+  for (const prepped of xmls) {
     const ctx = newContext(opts);
     await walkTemplate(undefined, prepped, ctx, async (data, node, ctx) => {
       const raw = getCommand(

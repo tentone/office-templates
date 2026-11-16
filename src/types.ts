@@ -2,6 +2,7 @@
 // Office XML nodes
 
 import { QualifiedAttribute } from 'sax';
+import type { WordTextStyle } from './text-style';
 
 // ==========================================
 export type Node = TextNode | NonTextNode;
@@ -13,6 +14,7 @@ type BaseNode = {
 export type TextNode = BaseNode & {
   _fTextNode: true;
   _text: string;
+  _command?: string;
 };
 export type NonTextNode = BaseNode & {
   _fTextNode: false;
@@ -192,6 +194,8 @@ export type Context = {
   htmls: Htmls;
   vars: { [name: string]: VarValue };
   loops: Array<LoopStatus>;
+  textStyles: Array<WordTextStyle | undefined>;
+  styledText?: WeakMap<TextNode, WordTextStyle>;
   fJump: boolean;
   shorthands: { [shorthand: string]: string };
   options: CreateReportOptions;
@@ -299,4 +303,6 @@ export const BUILT_IN_COMMANDS = [
   'IMAGE',
   'LINK',
   'HTML',
+  'STYLE-TXT',
+  'STYLE-TXT-END',
 ] as const;

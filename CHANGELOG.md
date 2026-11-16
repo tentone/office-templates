@@ -1,4 +1,5 @@
 ## Unreleased
+ - Add `STYLE-TXT` and `STYLE-TXT-END` to apply data-driven formatting to Word text, with support for nested styles.
  - Fix dependency conflicts by aligning the build plugins with Rollup 3 while keeping versions close to the previous releases.
  - Update TypeScript to 5.6 for compatibility with the existing Node.js type definitions.
  - Forward Rollup resolution options when resolving the browser stream polyfill to prevent the build from exiting early.

@@ -371,6 +371,31 @@ Takes the HTML resulting from evaluating a JavaScript snippet and converts it to
 `}}
 ```
 
+## `STYLE-TXT` and `STYLE-TXT-END`
+
+In Word templates, wrap text with these commands to apply formatting from a JavaScript object. The expression can use fields from `data` and `additionalJsContext`, as well as variables from an enclosing `FOR` loop. The formatting applies to template text and values inserted inside the block.
+
+```
+{{STYLE-TXT {bold: true, italic: true, color: "#FF0000"}}}Some text{{STYLE-TXT-END}}
+
+{{STYLE-TXT {color: "#FF0000"}}}Red text {{STYLE-TXT {color: "#00FF00"}}}Green text{{STYLE-TXT-END}} red again{{STYLE-TXT-END}}
+
+{{STYLE-TXT {color: someColor}}}Hello, {{INS name}}{{STYLE-TXT-END}}
+```
+
+| Property | Value |
+| --- | --- |
+| `color` | A six-digit hex color such as `"#FFFFFF"`. |
+| `highlightColor` | A six-digit hex color, a Word highlight color name such as `"yellow"` or `"darkBlue"`, or `null` to clear highlighting. |
+| `alignment` | `"center"`, `"right"`, `"left"`, or `"justify"`. |
+| `direction` | `"ltr"` or `"rtl"` for the styled text. |
+| `bold`, `italic`, `underline`, `striketrough` | `true` or `false`. `strikethrough` is also accepted. |
+| `subscript`, `superscript` | `true` or `false`. Enable at most one per object. |
+| `font` | A font family name such as `"Arial"`. |
+| `fontSize` | A number from 1 to 1638 points, rounded to the nearest half point. |
+
+Properties omitted in a block inherit from the enclosing `STYLE-TXT` block or the template formatting. A closing tag restores the enclosing style. A block can span multiple paragraphs. Word applies `alignment` to the whole paragraph. If several styled spans specify alignment in the same paragraph, the last applicable value wins.
+
 ## `FOR` and `END-FOR`
 
 Loop over a group of elements (resulting from the evaluation of a JavaScript expression):
