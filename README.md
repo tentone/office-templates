@@ -1,10 +1,10 @@
-# Office Templates
+# <img src="assets/office-templates-icon.png" alt="A code template turning into Word and PowerPoint files" width="64"> Office Templates
 
- - Fork of the [docx-templates]() project.
- - Template-based docx and pptx report creation for both Node and the browser.
+ - Fork of the [docx-templates](https://github.com/guigrpa/docx-templates) project.
+ - Template-based `.docx` and `.pptx` report creation for both Node and the browser.
  - The documents are created using Word or Powerpoint, placeholders can be added directly in the file.
  - Execute JavaScript snippets (`EXEC` command, or `!` for short)
-   - Note that the JavaScript code in your .docx or .pptx template will be run as-is by the browser.
+   - Note that the JavaScript code in your `.docx` or `.pptx` template will be run as-is by the browser.
 Transpilers  can't see this code, and won't be able to polyfill it.
  - Embed images, hyperlinks and even HTML dynamically (`IMAGE`, `LINK`, `HTML`).
    - Logic loops with `FOR`/`END-FOR` commands, with support for table rows, nested loops amnd conditionals using `IF`.
@@ -44,6 +44,18 @@ const report = await createReport({
 });
 ```
 
+## Example (Node.JS)
+
+- From the repository root, install and build the local package with `npm install`.
+ - Then run `node examples/index.js` to test the example code.
+
+ - The [example script](examples/index.js) fills the editable [Word template](examples/template.docx) and [PowerPoint template](examples/template.pptx).
+    - It writes `report.docx` and `report.pptx` to `examples/output/`.
+ - The templates demonstrate text insertion, JavaScript execution, aliases, nested conditions and loops, dynamic table rows and columns, QR images, and hyperlinks.
+    - The Word template also demonstrates nested text styles, HTML, and literal XML. The script shows async data and command results, template inspection, a fallback for missing data, and a custom JavaScript executor.
+
+<img src="./examples/template.png" height="200"> <img src="./examples/output/output.png" height="200">
+
 ## Options
 
  - The resolver is called once without arguments; its resolved data is used throughout the template.
@@ -76,6 +88,11 @@ const report = await createReport({
    * Process line breaks
    */
   processLineBreaks: true,
+
+  /* Insert Word line breaks between text elements for compatibility with Wordcraft and LibreOffice.
+   * Set to false to use the legacy format.
+   */
+  processLineBreaksAsNewText: true,
 
   /* Whether to fail on the first error encountered in the template.
    *
@@ -354,20 +371,17 @@ If the `label` is not specified, the URL is used as a label.
 
 ## `HTML`
 
-Takes the HTML resulting from evaluating a JavaScript snippet and converts it to Word contents.
+Embeds the HTML document returned by a JavaScript expression for Word to import. Return a complete HTML document, including `<html>` and `<body>` tags.
 
 **Important:** This uses altchunk, which is only supported in Microsoft Word, and not in e.g. LibreOffice or Google Docs.
 
 ```
 {{HTML `
-<meta charset="UTF-8">
-<body>
-  <h1>${film.title}</h1>
-  <h3>${film.releaseDate.slice(0, 4)}</h3>
-  <p>
-    <strong style="color: red;">This paragraph should be red and strong</strong>
-  </p>
-</body>
+<!DOCTYPE html>
+<html lang="en">
+  <head><meta charset="UTF-8"></head>
+  <body><p><strong>Next review</strong> is scheduled for Friday.</p></body>
+</html>
 `}}
 ```
 
@@ -523,10 +537,7 @@ Define a name for a complete command (especially useful for formatting tables):
 ```
 
 ## Literal XML
- - You can also directly insert Office Open XML markup into the document using the `literalXmlDelimiter`, which is by default set to `||`.
- - Examples of usage for this feature can be 
-
-E.g. if you have a template like this:
+Use `literalXmlDelimiter`, which defaults to `||`, to inject Office Open XML. For a Word tab, close the text element before inserting `<w:tab/>`, then open another text element.
 
 ```
 {{INS text}}
@@ -535,8 +546,8 @@ E.g. if you have a template like this:
 ```js
 await createReport({
   template,
-  data: { text: 'foo||<w:br/>||bar' },
-}
+  data: { text: 'Plot map||</w:t><w:tab/><w:t xml:space="preserve">||Garden entrance' },
+});
 ```
 
 

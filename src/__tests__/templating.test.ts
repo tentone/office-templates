@@ -1219,13 +1219,12 @@ Morbi dignissim consequat ex, non finibus est faucibus sodales. Integer sed just
         const template = await fs.promises.readFile(
           path.join(__dirname, 'fixtures', 'newlineInVariableIssue143.docx')
         );
-        const headline = 'I am a line\n\nAnd so am I!';
+        const headline = 'I am a line\r\n\r\nAnd so am I!';
         const opts = {
           template,
           data: {
             headline: headline,
           },
-          processLineBreaksAsNewText: true,
         };
         expect(await createReport(opts, 'XML')).toMatchSnapshot();
       });

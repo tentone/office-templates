@@ -747,7 +747,7 @@ const processCmd: CommandProcessor = async (
               `${literalXmlDelimiter}</a:t></a:r><a:br/><a:r><a:t xml:space="preserve">${literalXmlDelimiter}`
             );
           } else if (ctx.options.processLineBreaksAsNewText) {
-            const splitByLineBreak = str.split('\n');
+            const splitByLineBreak = str.split(/\r\n?|\n/);
             const LINE_BREAK = `${literalXmlDelimiter}<w:br/>${literalXmlDelimiter}`;
             const END_OF_TEXT = `${literalXmlDelimiter}</w:t>${literalXmlDelimiter}`;
             const START_OF_TEXT = `${literalXmlDelimiter}<w:t xml:space="preserve">${literalXmlDelimiter}`;

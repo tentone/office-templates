@@ -112,9 +112,8 @@ export type UserOptions = {
   fixSmartQuotes?: boolean;
 
   /**
-   * Use the new way of injecting line breaks from command results (only applies when `processLineBreaks` is `true`)
-   * which has better results in LibreOffice and Google Drive.
-   * (Default: false)
+   * Insert Word line breaks between text elements (default: true).
+   * Set to false to use the legacy format. Applies to Word when `processLineBreaks` is true.
    */
   processLineBreaksAsNewText?: boolean;
 
