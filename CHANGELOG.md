@@ -1,4 +1,4 @@
-## Unreleased
+## 0.3.0
  - Replace the legacy examples with one offline Node.js example for Word and PowerPoint using `{{` and `}}` delimiters.
  - Write Word line breaks between text elements by default so Wordcraft preserves them.
  - Add `STYLE-TXT` and `STYLE-TXT-END` to apply data-driven formatting to Word text, with support for nested styles.
@@ -6,7 +6,7 @@
  - Update TypeScript to 5.6 for compatibility with the existing Node.js type definitions.
  - Forward Rollup resolution options when resolving the browser stream polyfill to prevent the build from exiting early.
 
-## 1.0.0
+## 0.2.0
  - First release
  - Forked form "docx-templates" V4.15.0
  - Remove QUERY command
